@@ -32,6 +32,7 @@ PROTOCOL_DEFAULTS = {"BAUD": 9600.0, "SPOint": 50.0, "SAMPlepoint": 50.0, "WIDTh
 PROTOCOL_MIN_WIDTH = 340
 PROTOCOL_MIN_HEIGHT = 300
 NO_PROTOCOL = ""
+TRIGGER_MARK = "Trig"  # says on a channel's row that what follows is a trigger, not a decoder
 
 
 def _pairs(text: str) -> dict:
@@ -297,7 +298,8 @@ class ScopeSettings(QtWidgets.QPushButton):
         layout = QtWidgets.QVBoxLayout(group)
         form = QtWidgets.QFormLayout()
         self.depth = self._stored_combo("capture_depth", ((NO_CHANGE, None), *DEPTHS))
-        self.owner._bind(self.depth.setToolTip, "Więcej punktów to dłuższy zapis i dłuższy odczyt. Bez zmian zostawia to, co jest na oscyloskopie.")
+        self.owner._bind(self.depth.setToolTip, "Więcej punktów to dłuższy zapis i dłuższy odczyt. Auto: liczbę punktów dobiera oscyloskop tak, by zapis objął ekran. "
+                                                "Bez zmian zostawia to, co jest na oscyloskopie.")
         form.addRow(self.owner._label("Głębokość pamięci"), self.depth)
         scales = tuple((generator.format_time_scale(value), value) for value in generator.time_scale_choices())
         self.time_scale = self._stored_combo("capture_time_scale", ((NO_CHANGE, None), *scales))
@@ -486,8 +488,9 @@ class ScopeSettings(QtWidgets.QPushButton):
     def symbol(self, channel: int) -> str:
         """What a channel's row shows of the trigger on it: its condition, or the protocol it is a source of."""
         if channel in self.protocol_channels():
-            return self.protocol.currentText()
-        return trigger.symbol(self.conditions.get(channel, trigger.NONE))
+            return f"{TRIGGER_MARK} {self.protocol.currentText()}"
+        symbol = trigger.symbol(self.conditions.get(channel, trigger.NONE))
+        return f"{TRIGGER_MARK} {symbol}" if symbol else ""
 
     # ---- changes --------------------------------------------------------
     def _box_toggled(self, channel, checked):

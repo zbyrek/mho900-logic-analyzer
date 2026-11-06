@@ -11,12 +11,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5 import QtCore, QtGui, QtNetwork, QtWebSockets, QtWidgets  # noqa: E402
 
-from mhodecode import segments  # noqa: E402
+from mhodecode import segments, trigger  # noqa: E402
+from mhodecode.decoder_panel import RateBox, format_rate  # noqa: E402
+from mhodecode.decoders.sigrok import TYPICAL_RATES  # noqa: E402
 from mhodecode.decoders.base import Annotation, DecodeResult  # noqa: E402
-from mhodecode.scope import CapturePlan, ScopeError, Waveform, digital_channel  # noqa: E402
-from mhodecode.scope_panel import ScreenView  # noqa: E402
+from mhodecode.scope import CapturePlan, Scope, ScopeError, Waveform, digital_channel, format_si, standard_scale, vertical_scales  # noqa: E402
+from mhodecode.scope_panel import ScreenView, parse_seconds  # noqa: E402
 from mhodecode.screen_stream import MOUSE_DOWN, MOUSE_MOVE, MOUSE_UP, ScreenStream  # noqa: E402
-from test_gui import CaptureScope, PlanScope, app, run_job, square_wave, window  # noqa: E402, F401
+from test_gui import CaptureScope, PlanScope, RecordingLink, app, run_job, square_wave, window  # noqa: E402, F401
 
 D0, D9, D14 = digital_channel(0), digital_channel(9), digital_channel(14)
 
@@ -584,12 +586,12 @@ def test_a_channel_row_names_the_protocol_it_triggers_on(window):
     assert menu.symbol(1) == ""
     menu.protocol.setCurrentIndex(menu.protocol.findData("IIC"))
     sources = menu.protocol_channels()
-    assert sources and all(menu.symbol(channel) == "I2C" for channel in sources)
+    assert sources and all(menu.symbol(channel) == "Trig I2C" for channel in sources)
     assert all(menu.symbol(channel) == "" for channel in {1, 2, 3, 4} - sources)
     channel = min(sources)
-    assert window._channel_label("", channel).endswith(" I2C")
+    assert window._channel_label("", channel).endswith(" Trig I2C")
     label = window._channel_label("a name much too long for a row", channel)
-    assert label.endswith(" I2C") and "…" in label and len(label) <= 22
+    assert label.endswith(" Trig I2C") and "…" in label and len(label) <= 22
     menu.protocol.setCurrentIndex(0)
     assert menu.symbol(channel) == ""
 
@@ -605,3 +607,249 @@ def test_a_chosen_protocol_shows_at_once_on_the_row(window):
     ticks = window.channel_rows[channel].getAxis("left")
     assert "UART (RS232)" in str(ticks.labelText) + str(getattr(ticks, "_tickLevels", ""))
     menu.protocol.setCurrentIndex(0)
+
+
+# ---- the toolbar and the Oscilloscope tab -------------------------------------
+def test_a_condition_on_a_row_is_also_named_a_trigger(window):
+    menu = window.scope_settings
+    menu.set_condition(1, trigger.RISING)
+    assert menu.symbol(1).startswith("Trig ") and window._channel_label("", 1).startswith("CH1 Trig ")
+    menu.set_condition(1, trigger.NONE)
+    assert menu.symbol(1) == ""
+
+
+def test_every_protocol_fits_a_row_with_its_channel_whole(window):
+    menu = window.scope_settings
+    for position in range(1, menu.protocol.count()):
+        menu.protocol.setCurrentIndex(position)
+        for channel in menu.protocol_channels():
+            label = window._channel_label("", channel)
+            assert "…" not in label and len(label) <= 22, label
+    menu.protocol.setCurrentIndex(0)
+
+
+def test_repeat_is_a_tick_box_and_abort_stands_in_for_run_while_a_job_runs(window, app):
+    assert isinstance(window.repeat_button, QtWidgets.QCheckBox)
+    assert window.run_place.currentWidget() is window.single_button
+    window.scope_settings.choose((1,))
+    window.scope = CaptureScope()
+    window._refresh_buttons()
+    window._acquire()
+    assert window.run_place.currentWidget() is window.abort_button and window.abort_button.isEnabled()
+    run_job(window, app)
+    assert window.run_place.currentWidget() is window.single_button and window.single_button.isEnabled()
+
+
+def test_the_volt_steps_are_the_standard_ones_times_the_probe():
+    assert vertical_scales(1)[0] == 0.001 and vertical_scales(1)[-1] == 10.0 and 0.5 in vertical_scales(1)
+    assert vertical_scales(10)[0] == 0.01 and vertical_scales(10)[-1] == 100.0 and 5.0 in vertical_scales(10)
+    assert vertical_scales(15)[:3] == [0.015, 0.03, 0.075]
+    assert standard_scale(0.66, 1) == 1.0 and standard_scale(0.5, 1) == 0.5 and standard_scale(1000.0, 1) == 10.0
+
+
+def values_of(combo):
+    return [combo.itemData(position) for position in range(combo.count())]
+
+
+def test_the_volt_list_follows_the_probe_and_turns_the_fine_adjustment_off(window):
+    panel = window.panel
+    panel.link = link = RecordingLink()
+    try:
+        scale, probe = panel.settings["scale1"], panel.settings["probe1"]
+        assert values_of(panel.channel_scale[1]) == vertical_scales(1)
+        probe.show("1.000000E+01")
+        scale.show("1.000000E-02")  # the scope changes the scale along with the ratio
+        assert panel.channel_probe[1].currentData() == "10" and values_of(panel.channel_scale[1]) == vertical_scales(10)
+        probe.set_value("100")
+        assert link.sent == [":CHANnel1:PROBe 100"]
+        scale.show("1.000000E-01")
+        assert values_of(panel.channel_scale[1]) == vertical_scales(100)
+        link.sent.clear()
+        scale.set_value(1000.0)
+        assert link.sent == [":CHANnel1:VERNier OFF", ":CHANnel1:SCALe 1000"]
+        probe.hold_until = scale.hold_until = 0.0  # the setting's hold after a change has run out
+        probe.show("7.000000E+00")  # a ratio of its own, set on the instrument
+        scale.show("7.000000E-03")
+        assert panel.channel_probe[1].currentText() == "7×" and values_of(panel.channel_scale[1]) == vertical_scales(7)
+    finally:
+        panel.link = None
+        panel.settings["probe1"].hold_until = panel.settings["scale1"].hold_until = 0.0
+        panel.settings["probe1"].show("1.000000E+00")
+        panel.settings["scale1"].show("1.000000E-03")
+
+
+def test_a_value_between_the_steps_is_shown_only_while_it_is_set(window):
+    setting = window.panel.settings["scale1"]
+    combo = window.panel.channel_scale[1]
+    setting.show("6.600000E-01")
+    assert combo.currentData() == 0.66 and combo.currentText() == "660 mV" and 0.66 in values_of(combo)
+    setting.show("6.600000E-01")
+    assert values_of(combo).count(0.66) == 1
+    setting.show("5.000000E-01")
+    assert combo.currentData() == 0.5 and values_of(combo) == vertical_scales(1)
+
+
+def test_auto_depth_stays_on_the_list_with_the_points_the_scope_picked(window):
+    panel = window.panel
+    panel.link = RecordingLink()
+    try:
+        setting = panel.settings["depth"]
+        setting.set_value("AUTO")
+        assert panel.depth.currentData() == "AUTO" and panel.depth_is_auto()
+        setting.hold_until = 0.0
+        setting.show("1.0000E+06")
+        assert panel.depth.currentData() == "AUTO" and panel.depth.currentText() == "Auto (1 M)"
+        setting.show("5.0000E+05")
+        assert panel.depth.currentText() == "Auto (500 k)"
+        setting.set_value("1000000")
+        setting.hold_until = 0.0
+        setting.show("1.0000E+06")
+        assert panel.depth.currentData() == "1000000" and not panel.depth_is_auto()
+        assert panel.depth.itemText(panel.depth.findData("AUTO")) == "Auto"
+        setting.show("4.0000E+03")  # no fixed depth has this many, so it was set on the scope itself
+        assert panel.depth.currentData() == "AUTO" and panel.depth_is_auto()
+    finally:
+        panel.link = None
+        panel.settings["depth"].set_auto(False)
+
+
+def test_an_acquisition_on_auto_tells_the_tab(window, app):
+    menu = window.scope_settings
+    menu.choose((1,))
+    menu.depth.setCurrentIndex(menu.depth.findData("AUTO"))
+    window.scope = CaptureScope()
+    window._acquire()
+    run_job(window, app)
+    assert window.panel.depth_is_auto() and ":ACQuire:MDEPth AUTO" in window.scope.sent
+    menu.depth.setCurrentIndex(menu.depth.findData("1000000"))
+    window._acquire()
+    run_job(window, app)
+    assert not window.panel.depth_is_auto()
+    menu.depth.setCurrentIndex(0)
+
+
+class AutoscaleScope(Scope):
+    """Measures a 0 to 3.96 V signal: its own scale would be 0.66 V per division."""
+
+    def __init__(self, probe=1.0):
+        self.sent = []
+        self.probe = probe
+
+    def write(self, command):
+        self.sent.append(command)
+
+    def query(self, command):
+        if command.endswith(":PROBe?"):
+            return str(self.probe)
+        return {":ACQuire:MDEPth?": "5.0000E+05"}.get(command, "1")
+
+    def single(self, timeout=10.0, force_after=1.0):
+        return True
+
+    def fetch(self, channel, points=None, progress=None, sample_format="BYTE"):
+        return Waveform(channel, np.r_[np.zeros(500), np.full(500, 3.96)].astype(np.float32), 1e-6, 0.0)
+
+
+@pytest.mark.parametrize("probe, scale", [(1.0, "1"), (10.0, "1")])
+def test_autoscale_ends_on_a_standard_step_with_the_fine_adjustment_off(probe, scale):
+    scope = AutoscaleScope(probe)
+    scope.autoscale([1])
+    scales = [command for command in scope.sent if command.startswith(":CHANnel1:SCALe")]
+    assert scales[-1] == f":CHANnel1:SCALe {scale}" and ":CHANnel1:VERNier OFF" in scope.sent
+
+
+@pytest.mark.parametrize("auto, restored", [(True, ":ACQuire:MDEPth AUTO"), (False, ":ACQuire:MDEPth 500000")])
+def test_autoscale_puts_the_memory_depth_back(auto, restored):
+    scope = AutoscaleScope()
+    scope.autoscale([1], auto_depth=auto)
+    assert [command for command in scope.sent if command.startswith(":ACQuire:MDEPth")][-1] == restored
+
+
+@pytest.mark.parametrize("value, text", [(0.0, "0 s"), (1.2112e-3, "1.2112 ms"), (-2e-6, "-2 µs"), (3e-9, "3 ns"), (1.5, "1.5 s"), (5e-12, "5 ps")])
+def test_a_time_gets_its_si_prefix(value, text):
+    assert format_si(value, "s") == text
+
+
+@pytest.mark.parametrize("text, value", [("1,5 ms", 1.5e-3), ("2us", 2e-6), ("20 µs", 2e-5), ("-3 ns", -3e-9), ("0.1", 0.1), ("1 s", 1.0), ("1e-3", 1e-3)])
+def test_a_time_can_be_typed_with_a_prefix(text, value):
+    assert parse_seconds(text) == pytest.approx(value)
+
+
+def test_the_time_offset_shows_and_sends_seconds_with_a_prefix(window):
+    panel = window.panel
+    panel.link = link = RecordingLink()
+    try:
+        panel.settings["time_offset"].show("1.211200E-3")
+        assert panel.time_offset.text() == "1.2112 ms" and link.sent == []
+        panel.time_offset.lineEdit().setText("20 us")
+        panel.time_offset.interpretText()
+        assert panel.time_offset.value() == pytest.approx(2e-5) and link.sent == [":TIMebase:MAIN:OFFSet 2e-05"]
+        assert panel.time_offset.validate("abc", 0)[0] == QtGui.QValidator.Invalid
+        panel.settings["time_scale"].show("1.000000E-3")
+        assert panel.time_offset.singleStep() == pytest.approx(1e-4)
+    finally:
+        panel.link = None
+
+
+def test_the_digital_groups_alone_turn_the_digital_channels_on(window):
+    panel = window.panel
+    assert "la" not in panel.settings
+    panel.link = link = RecordingLink()
+    try:
+        panel.pod_on[1].setChecked(False)
+        panel.pod_on[2].setChecked(False)
+        panel.settings["pod1"].set_value(True)
+        assert link.sent == [":LA:ENABle ON", ":LA:POD1:DISPlay ON", ":LA:POD2:DISPlay OFF"]
+        link.sent.clear()
+        panel.settings["pod2"].set_value(True)
+        assert link.sent == [":LA:ENABle ON", ":LA:POD2:DISPlay ON"]
+        link.sent.clear()
+        panel.settings["pod2"].set_value(False)
+        assert link.sent == [":LA:POD2:DISPlay OFF"]
+    finally:
+        panel.link = None
+
+
+def test_a_decoder_rate_comes_from_a_list_with_any_other_typed(window, app):
+    changes = []
+    box = RateBox(TYPICAL_RATES[("uart", "baudrate")], 115200)
+    box.valueChanged.connect(changes.append)
+    assert box.value() == 115200 and box.custom.isHidden() and box.list.currentText() == "115200 bit/s"
+    box.list.setCurrentIndex(box.list.findData(9600))
+    box.list.activated.emit(box.list.currentIndex())
+    assert box.value() == 9600 and changes == [9600] and box.custom.isHidden()
+    box.list.setCurrentIndex(box.list.count() - 1)
+    box.list.activated.emit(box.list.currentIndex())
+    assert not box.custom.isHidden() and box.value() == 9600 and changes == [9600]
+    box.custom.setValue(31250)
+    assert box.value() == 31250 and changes == [9600, 31250]
+    box.setValue(250000)  # not on this list
+    assert box.list.currentData() is None and not box.custom.isHidden() and box.value() == 250000
+
+
+def test_the_decoders_with_a_rate_have_their_lists_and_decode_on_a_change(window):
+    for decoder, key, listed in (("uart", "baudrate", "115200 bit/s"), ("can", "nominal_bitrate", "500 kbit/s"), ("can", "fast_bitrate", "2 Mbit/s"),
+                                 ("miller", "baudrate", "106 kbit/s")):
+        card = window.select_sigrok(decoder)
+        box = card.param_widgets[key]
+        assert isinstance(box, RateBox) and box.list.findText(listed) >= 0, (decoder, key)
+        assert card.params()[key] == box.value() and isinstance(box.value(), int)
+        changes = []
+        card.changed.connect(lambda: changes.append(1))
+        other = next(i for i in range(box.list.count() - 1) if box.list.itemData(i) != box.value())
+        box.list.setCurrentIndex(other)
+        box.list.activated.emit(other)
+        assert changes and card.params()[key] == box.list.itemData(other)
+        window.remove_decoder(card)
+
+
+def test_a_zero_offset_goes_out_without_a_sign():
+    scope = Scope("192.0.2.1")
+    sent = []
+    scope.write = sent.append
+    scope.set_vertical(2, 0.1, -0.0)
+    assert sent == [":CHANnel2:SCALe 0.1", ":CHANnel2:OFFSet 0"]
+
+
+def test_format_rate():
+    assert [format_rate(rate) for rate in (9600, 125000, 1000000, 98425)] == ["9600 bit/s", "125 kbit/s", "1 Mbit/s", "98425 bit/s"]

@@ -34,7 +34,7 @@ DISPLAY_MODES = (("Logika", "logic"), ("Analog", "analog"))
 THEME_NAMES = (("Jasny", "light"), ("Ciemny", "dark"))
 MAX_TEXT_ITEMS = 120
 SEPARATOR_LABEL_POSITION = 0.95  # of the row's height
-TRIGGER_LINE_LABEL = "T"
+TRIGGER_LINE_LABEL = "Trig"
 TRIGGER_LINE_WIDTH = 2
 VERTICAL_LINE_Z = 50  # above the traces
 TRIGGER_TIMES_KEY = "trigger_times"  # in a saved file; a file without it says nothing of the trigger
@@ -419,8 +419,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bind(self.read_button.setToolTip, "Zatrzymuje oscyloskop i dekoduje to, co jest w jego pamięci, bez zmiany jego ustawień.")
         self.autoscale_button = self._busy_button("Autoskala", self._autoscale, needs_scope=True)
         self._bind(self.autoscale_button.setToolTip, "Dopasowuje zakresy używanych kanałów i ustawia wyzwalanie.")
-        self.repeat_button = QtWidgets.QPushButton()
-        self.repeat_button.setCheckable(True)
+        self.repeat_button = QtWidgets.QCheckBox()
         self._bind(self.repeat_button.setText, "Powtarzaj")
         self._bind(self.repeat_button.setToolTip, "Po każdym dekodowaniu kolejna akwizycja, aż do wyłączenia lub przerwania. Nowe próbki trafiają dalej na osi czasu, za separatorem, a dekoder czyta każdą akwizycję osobno.")
         self.abort_button = QtWidgets.QPushButton()
@@ -431,8 +430,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bind(self.abort_button.setToolTip, "Przerywa trwającą operację i wyłącza Powtarzaj (Esc).")
         self.abort_button.setEnabled(False)
         self.abort_button.clicked.connect(self._abort)
-        for button in (self.single_button, self.repeat_button, self.read_button, self.autoscale_button, self.abort_button):
-            device.addWidget(button)
+        self.run_place = QtWidgets.QStackedWidget()  # Run gives way to Abort while something can be stopped
+        self.run_place.addWidget(self.single_button)
+        self.run_place.addWidget(self.abort_button)
+        device.addWidget(self.run_place)
+        device.addWidget(self.repeat_button)
+        device.addSeparator()
+        device.addWidget(self.read_button)
+        device.addWidget(self.autoscale_button)
         device.addSeparator()
 
         self.zoom_in_button = self._view_button(device, "+", self._zoom_in, "Powiększ (kółko myszy)", "Ctrl+=")
@@ -574,17 +579,6 @@ class MainWindow(QtWidgets.QMainWindow):
         view.addAction(self.sidebar_dock.toggleViewAction())
         view.addAction(self.results_dock.toggleViewAction())
         view.addSeparator()
-        log = view.addAction("")
-        self._bind(log.setText, "Log")
-        log.setShortcut("Ctrl+L")
-        log.triggered.connect(self.show_log)
-        verbose = view.addAction("")
-        self._bind(verbose.setText, "Szczegółowy log (verbose)")
-        verbose.setCheckable(True)
-        verbose.setChecked(self.verbose.isChecked())
-        verbose.toggled.connect(self.verbose.setChecked)
-        self.verbose.toggled.connect(verbose.setChecked)
-        view.addSeparator()
         themes = view.addMenu("")
         self._bind(themes.setTitle, "Motyw")
         theme_group = QtWidgets.QActionGroup(self)
@@ -603,6 +597,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.test_action = advanced.addAction("")
         self._bind(self.test_action.setText, "Odbiór i porównanie danych")
         self.test_action.triggered.connect(self.show_test_window)
+        advanced.addSeparator()
+        log = advanced.addAction("")
+        self._bind(log.setText, "Log")
+        log.setShortcut("Ctrl+L")
+        log.triggered.connect(self.show_log)
+        verbose = advanced.addAction("")
+        self._bind(verbose.setText, "Szczegółowy log (verbose)")
+        verbose.setCheckable(True)
+        verbose.setChecked(self.verbose.isChecked())
+        verbose.toggled.connect(self.verbose.setChecked)
+        self.verbose.toggled.connect(verbose.setChecked)
 
         languages = self.menuBar().addMenu("")
         self._bind(languages.setTitle, "Język")
@@ -955,6 +960,7 @@ class MainWindow(QtWidgets.QMainWindow):
             button.setEnabled(not running and (not needs_scope or self.scope is not None))
         self.connect_button.setEnabled(not running)
         self.abort_button.setEnabled(running and self.abortable)
+        self.run_place.setCurrentWidget(self.abort_button if running and self.abortable else self.single_button)
         self.connect_button.setText(tr("Rozłącz") if self.scope else tr("Połącz"))
 
     abortable = False
@@ -1215,6 +1221,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         plan = CapturePlan(set(channels), self.force_dc.isChecked(), settings.depth.currentData(), settings.time_scale.currentData(),
                            tuple(commands), settings.pod_thresholds(), settings.pretrigger())
+        self.panel.note_depth(plan.depth)
         wait = self.wait_trigger.isChecked() or settings.trigger_is_waited_for()
         sample_format = self.read_format.currentData()
 
@@ -1342,9 +1349,10 @@ class MainWindow(QtWidgets.QMainWindow):
             found = re.fullmatch(r"CHANnel(\d)", self.panel.edge_setting("SOURce").current())
             trigger_channel = int(found.group(1)) if found else None
         slope = self.panel.edge_setting("SLOPe").current()
+        auto_depth = self.panel.depth_is_auto()
 
         def job(_progress):
-            return self.scope.autoscale(channels, trigger_channel, slope)
+            return self.scope.autoscale(channels, trigger_channel, slope, auto_depth)
 
         self._start(job, self._autoscaled, tr("Autoskala…"))
 
@@ -1966,8 +1974,8 @@ class MainWindow(QtWidgets.QMainWindow):
         """The channel and its trigger stay whole in a short row label: the signal's name gives way."""
         tail = " ".join((channel_name(channel), self.scope_settings.symbol(channel))).strip()
         room = ROW_LABEL_CHARS - len(tail) - 1
-        if len(name) > room:
-            name = name[:max(room - 1, 0)] + "…"
+        if len(name) > max(room, 0):
+            name = name[:room - 1] + "…" if room > 1 else ""
         return f"{name} {tail}".strip()
 
     def _mark_capture_starts(self):

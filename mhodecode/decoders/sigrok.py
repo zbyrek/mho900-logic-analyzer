@@ -25,11 +25,17 @@ _HEX_CLASSES = {
 _UART_VALUES = {"rx-data", "tx-data", "rx-packet", "tx-packet"}
 _HEX_TOKEN = re.compile(r"(?<![0-9A-Za-z])[0-9A-Fa-f]{2,}(?![0-9A-Za-z])")
 _UART_UNPRINTABLE = re.compile(r"^\[([0-9A-F]+)\]$")  # how the UART decoder writes a control character
+_UART_RATES = (1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 2000000, 3000000)
+_CAN_RATES = (10000, 20000, 50000, 100000, 125000, 250000, 500000, 800000, 1000000)
+_CAN_FD_RATES = (1000000, 2000000, 4000000, 5000000, 8000000)
+_ISO14443_RATES = (106000, 212000, 424000, 848000)
+TYPICAL_RATES = {("uart", "baudrate"): _UART_RATES, ("can", "nominal_bitrate"): _CAN_RATES, ("can", "fast_bitrate"): _CAN_FD_RATES,
+                 ("miller", "baudrate"): _ISO14443_RATES}
 _SPIN_LIMIT = 2_000_000_000
 _FLOAT_DECIMALS = 6
 
 
-def option_param(option: dict) -> ParamSpec:
+def option_param(option: dict, decoder_id: str = "") -> ParamSpec:
     default = option["default"]
     values = option.get("values")
     if values and default not in values:  # upstream am230x: the default is not among its values
@@ -37,7 +43,7 @@ def option_param(option: dict) -> ParamSpec:
     return ParamSpec(
         key=option["id"], label=option.get("desc", option["id"]), default=default,
         choices=tuple((value, str(value)) for value in values) if values else None,
-        minimum=-_SPIN_LIMIT, maximum=_SPIN_LIMIT, decimals=_FLOAT_DECIMALS)
+        minimum=-_SPIN_LIMIT, maximum=_SPIN_LIMIT, decimals=_FLOAT_DECIMALS, rates=TYPICAL_RATES.get((decoder_id, option["id"]), ()))
 
 
 def _is_data(name: str) -> bool:
@@ -82,7 +88,7 @@ class SigrokDecoder(Decoder):
         self.name = info.name
         self.signals = tuple(SignalSpec(spec["id"], spec["name"], True) for spec in info.channels) + tuple(
             SignalSpec(spec["id"], spec["name"], False) for spec in info.optional_channels)
-        self.params = tuple(option_param(option) for option in info.options)
+        self.params = tuple(option_param(option, info.id) for option in info.options)
 
     def decode(self, traces, /, *, srd_stack=(), **options) -> DecodeResult:
         if not traces:

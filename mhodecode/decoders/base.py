@@ -53,6 +53,7 @@ class ParamSpec:
     hint: str = ""
     display_hex: bool = False
     decimals: int = 2
+    rates: tuple = ()  # typical values to pick from, with any other one still possible
 
 
 class Decoder(ABC):

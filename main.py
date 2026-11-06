@@ -61,6 +61,10 @@ def run_selftest(window, app, host: str, output: Path) -> None:
         return [choose, window._generate, window._match_decoder, window._autoscale, window._acquire,
                 compare_step("UART on AFG2")]
 
+    def set_digital_groups(on):
+        for pod in (1, 2):
+            window.panel.settings[f"pod{pod}"].set_value(on)
+
     def sigrok_steps(name, protocol, data, pd_id, signals, options, wanted, shot, **params):
         """The generator's signal read back by a sigrok decoder with the stack that pd_id needs."""
         def choose():
@@ -98,7 +102,7 @@ def run_selftest(window, app, host: str, output: Path) -> None:
             set_generator("I2C", "hex", "48 65 6C 6C 6F")
 
         def assign():
-            window.panel.settings["la"].set_value(True)
+            set_digital_groups(True)
             for pod in (1, 2):
                 window.panel.settings[f"threshold{pod}"].set_value(LOGIC_THRESHOLD)
             rows = {row.spec.key: row for row in window.active_card.signal_rows}
@@ -299,7 +303,7 @@ def run_selftest(window, app, host: str, output: Path) -> None:
         set_generator("I2C", "hex", "48 65 6C 6C 6F")
 
     def enable_digital():
-        window.panel.settings["la"].set_value(True)
+        set_digital_groups(True)
         for pod in (1, 2):
             window.panel.settings[f"threshold{pod}"].set_value(LOGIC_THRESHOLD)
 
@@ -339,7 +343,7 @@ def run_selftest(window, app, host: str, output: Path) -> None:
         return [send, check]
 
     def digital_off():
-        window.panel.settings["la"].set_value(False)
+        set_digital_groups(False)
         window.read_format.setCurrentIndex(window.read_format.findData("BYTE"))
 
     def set_depth():

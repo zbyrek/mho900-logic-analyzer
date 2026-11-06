@@ -22,14 +22,14 @@ Jeśli program skończy się błędem, okno konsoli zostaje otwarte z jego treś
 4. Kliknij **Autoskala**, aby dopasować skalę pionową i poziom wyzwalania.
 5. Na zakładce **Oscyloskop** wybierz głębokość pamięci, podstawę czasu (lista 500 ps/div … 500 s/div
    w krokach 1-2-5) i wyzwalanie, sprawdzając efekt na podglądzie, a potem kliknij **Run**.
-   Przycisk **Czytaj pamięć** dekoduje to, co jest już w pamięci oscyloskopu, a **Powtarzaj** robi akwizycje
-   jedna po drugiej, aż go wyłączysz. Próbki zostają: każda kolejna akwizycja trafia dalej na osi czasu, za przerywaną linią
+   Przycisk **Czytaj pamięć** dekoduje to, co jest już w pamięci oscyloskopu, a pole **Powtarzaj** daje akwizycje
+   jedna po drugiej, aż je odznaczysz. Próbki zostają: każda kolejna akwizycja trafia dalej na osi czasu, za przerywaną linią
    z numerem, a dekodery czytają każdą akwizycję osobno. Inne kanały lub inna częstotliwość próbkowania zaczynają zapis od nowa,
    a przy około 2 GB próbek Powtarzaj wyłącza się samo. Ręczny **Run** i **Czytaj pamięć** też zaczynają od nowa.
 6. Kliknięcie wiersza tabeli przybliża wykres do tego elementu. Kółko myszy i przeciąganie
    zmieniają zakres wykresu.
 
-Przycisk **Przerwij** kończy bieżącą operację: odczyt pamięci, oczekiwanie na wyzwolenie,
+Przycisk **Przerwij** pojawia się w miejscu **Run**, gdy coś trwa, i kończy bieżącą operację: odczyt pamięci, oczekiwanie na wyzwolenie,
 autoskalę, ładowanie generatora albo dekodowanie. Opcja **Czekaj na wyzwolenie**
 wyłącza wymuszanie akwizycji po 1 s, więc czeka na sygnał, aż go przerwiesz.
 
@@ -79,7 +79,7 @@ sygnałach, dokładanie na stos, ukrywanie dekodera i pojedynczych wierszy oraz 
 Z PulseView nie ma tu edycji nazwy i koloru pasu, przeciągania pasów w inną kolejność, pauzy dekodowania ani menu
 kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym oknie, a nie w dymku.
 
-- **Pasek narzędzi u góry:** połączenie, **Ustawienia oscyloskopu**, **Run** (F5), odczyt pamięci, autoskala, **Przerwij** (Esc),
+- **Pasek narzędzi u góry:** połączenie, **Ustawienia oscyloskopu**, **Run** (F5), a w jego miejscu w trakcie pracy **Przerwij** (Esc), pole **Powtarzaj**, osobno odczyt pamięci i autoskala,
   powiększenie, widok **Logika/Analog** i **Kursory**. Ręczne RUN, STOP, SINGLE i FORCE są tylko w zakładce Oscyloskop.
 - **Ustawienia oscyloskopu:** menu na pasku z kanałami CH1–CH4 i D0–D15, głębokością pamięci, podstawą czasu, wyzwalaniem,
   formatem odczytu, wymuszeniem DC i czekaniem na wyzwolenie. Oscyloskop dostaje je dopiero przy **Akwizycji**: zaznaczone kanały
@@ -90,9 +90,9 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   akwizycja ustawia przesunięcie podstawy czasu (`:TIMebase:MAIN:OFFSet`) wyliczone z głębokości pamięci i częstotliwości próbkowania.
   Oscyloskop ogranicza to przesunięcie do −5 działek, więc gdy pamięć jest dłuższa niż ekran, duży pretrigger jest nieosiągalny i log podaje, ile wyszło.
   Odznaczone: przesunięcie zostaje takie, jak na oscyloskopie.
-- **Linia wyzwolenia:** czerwona pionowa linia „T” przechodzi przez wszystkie wiersze w chwili wyzwolenia, przy Powtarzaj osobno dla każdej
+- **Linia wyzwolenia:** czerwona pionowa linia „Trig” przechodzi przez wszystkie wiersze w chwili wyzwolenia, przy Powtarzaj osobno dla każdej
   akwizycji. W akwizycji wymuszonej to chwila wymuszenia. Pliki WFM i pliki NPZ bez zapisanej chwili wyzwolenia nie mają tej linii.
-- **Oznaczenie wyzwalania przy kanale:** etykieta wiersza pokazuje obok numeru kanału symbol warunku albo nazwę protokołu, którego kanał jest źródłem.
+- **Oznaczenie wyzwalania przy kanale:** etykieta wiersza pokazuje obok numeru kanału „Trig” z symbolem warunku albo z nazwą protokołu, którego kanał jest źródłem, np. `CH1 Trig I2C`.
 - **Wyzwalanie w Ustawieniach oscyloskopu:** zakładka **Kanały** to warunki na pojedynczych kanałach. Zakładka **Zaawansowane** to
   wyzwalanie na protokole (UART, I2C, SPI, CAN, LIN, I2S, FlexRay, 1553B) ze źródłami na CH1–CH4 i D0–D15. Źródło na D0–D15 nie ma
   własnego poziomu, bo przełącza się na progu swojej grupy. Protokół i warunki na kanałach zastępują się nawzajem, a akwizycja czeka na
@@ -122,6 +122,13 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   połączenia. Oprócz tego podstawa czasu, głębokość pamięci, tryb akwizycji, kanały
   CH1–CH4, kanały cyfrowe i wyzwalanie. Każda zmiana idzie do oscyloskopu od razu, a wartości są stale odczytywane,
   więc widać też zmiany zrobione na samym oscyloskopie. Odrzucone polecenie pojawia się na pasku stanu.
+  Lista V/dz ma kroki 1-2-5 pomnożone przez mnożnik sondy kanału, od 1 mV × mnożnik do 10 V × mnożnik przy wejściu 1 MΩ, a wybór z niej wyłącza
+  dokładne strojenie kanału (`:CHANnel<n>:VERNier OFF`). Wartość spoza kroków ustawioną na oscyloskopie lista pokazuje, dopóki jest ustawiona.
+  Autoskala też ustawia te kroki. Przesunięcie czasu jest pokazywane z przedrostkiem SI i tak można je wpisać (`1,5 ms`, `20 us`).
+  Grupy D0–D7 i D8–D15 same włączają i wyłączają kanały cyfrowe, bez osobnego pola.
+  Głębokość **Auto** pokazuje w nawiasie liczbę punktów dobraną przez oscyloskop. Odczyt z oscyloskopu podaje liczbę punktów także w Auto, więc
+  program rozpoznaje Auto po tym, że sam je ustawił, albo po liczbie punktów, której nie ma żadna stała głębokość. Stała głębokość ustawiona
+  na samym oscyloskopie po wybraniu Auto w programie nadal pokaże się jako Auto.
   Na tej zakładce panele dekodera są schowane.
 - **Panel boczny:** zakładki **Dekoder** i **Generator**. Dekodery są w drzewie, sortowanym po kategoriach albo protokole
   nadrzędnym. Przeciągnij dekoder na przebiegi (albo kliknij dwukrotnie). Upuszczony na pas dekodera, do którego pasuje,
@@ -131,12 +138,13 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   razem ze stosem.
 - **Podpowiedzi:** po najechaniu myszą przycisk lub pole wyboru pokazuje, co robi.
 - **Okno ustawień dekodera:** otwiera je kliknięcie etykiety pasu lub menu prawego klawisza. Ma kanały, opcje, pole pokazania
-  lub ukrycia, przycisk usunięcia, listę **Wiersze** i **Dodaj na stos**.
+  lub ukrycia, przycisk usunięcia, listę **Wiersze** i **Dodaj na stos**. Prędkość UART, CAN, CAN FD i Miller wybiera się z listy typowych
+  wartości, a **Własna…** otwiera pole na dowolną.
   Na przebiegach najpierw są kanały, a pod nimi pasy kolejnych dekoderów. Etykiety pasów drugiego i kolejnych dekoderów
   mają jego numer (`#2`).
 - **Wyniki na dole:** wyszukiwarka, filtr wiersza dekodera i **Tylko błędy**.
-- **Menu:** **Plik** (otwieranie i zapis przebiegów, eksport CSV), **Widok** (ekran oscyloskopu, panele, **Log**
-  w osobnym oknie, Ctrl+L, oraz **Motyw** jasny lub ciemny), **Zaawansowane** (okno odbioru i porównania danych).
+- **Menu:** **Plik** (otwieranie i zapis przebiegów, eksport CSV), **Widok** (ekran oscyloskopu, panele,
+  **Motyw** jasny lub ciemny), **Zaawansowane** (okno odbioru i porównania danych, **Log** w osobnym oknie, Ctrl+L, i log szczegółowy).
 
 Ostatni komunikat widać na pasku stanu, a błąd jest tam czerwony. Kliknięcie otwiera log.
 

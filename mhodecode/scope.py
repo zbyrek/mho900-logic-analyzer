@@ -50,6 +50,10 @@ AUTOSCALE_DEPTH = 100_000
 AUTOSCALE_START_V_PER_DIV = 5.0
 AUTOSCALE_MIN_SWING_V = 0.1
 AUTOSCALE_DIVISIONS = 6
+# At a probe ratio of 1: 1 mV/div to 10 V/div with 1 MOhm input, from the Programming Guide. Each step times the ratio
+# came back as sent for ratios from 0.1 to 100 (measured, firmware 00.01.00).
+VERTICAL_STEPS = tuple(mantissa * 10.0 ** power for power in range(-3, 1) for mantissa in (1, 2, 5)) + (10.0,)
+SI_PREFIXES = ((1.0, ""), (1e-3, "m"), (1e-6, "µ"), (1e-9, "n"), (1e-12, "p"))
 ERROR_QUEUE_LIMIT = 50
 # Digital channels share the numbering of analog ones, as a number from this one up.
 DIGITAL_BASE = 100
@@ -70,6 +74,25 @@ FTP_BLOCK_BYTES = 1 << 20
 # Nothing connected, DC, 10 mV/div to 5 V/div: the swing that auto_thresholds measures reached 0.11
 # div (BYTE and WORD), which in volts grows with the scale. Twice that is noise and not a signal.
 NOISE_DIVISIONS = 0.2
+
+
+def vertical_scales(probe: float) -> list[float]:
+    """The 1-2-5 steps of the vertical scale at this probe ratio, in volts per division."""
+    return [float(f"{step * probe:.6g}") for step in VERTICAL_STEPS]
+
+
+def standard_scale(volts_per_div: float, probe: float) -> float:
+    """The smallest step that shows at least this much per division, else the largest one."""
+    scales = vertical_scales(probe)
+    return next((scale for scale in scales if scale >= volts_per_div), scales[-1])
+
+
+def format_si(value: float, unit: str) -> str:
+    """1.2112e-3 and "s" give "1.2112 ms"."""
+    if value == 0:
+        return f"0 {unit}"
+    factor, prefix = next((entry for entry in SI_PREFIXES if abs(value) >= entry[0]), SI_PREFIXES[-1])
+    return f"{value / factor:.6g} {prefix}{unit}"
 
 
 class ScopeError(RuntimeError):
@@ -333,7 +356,8 @@ class Scope:
 
     def set_vertical(self, channel: int, scale: float, offset: float) -> None:
         self.write(f":CHANnel{channel}:SCALe {scale:g}")
-        self.write(f":CHANnel{channel}:OFFSet {offset:g}")
+        # + 0.0 turns -0.0 into 0.0: the scope refuses "-0" with -120, and a flat channel measures exactly 0 V.
+        self.write(f":CHANnel{channel}:OFFSet {offset + 0.0:g}")
 
     def set_memory_depth(self, depth: int | str) -> None:
         self.write(f":ACQuire:MDEPth {depth}")
@@ -387,8 +411,8 @@ class Scope:
         notes = [tr("oscyloskop zgłosił {error}", error=error) for error in self.errors()]
         got = self.query_float(":TIMebase:MAIN:OFFSet?")
         if abs(got - wanted) > length * PRETRIGGER_TOLERANCE:
-            notes.append(tr("pretrigger to {got:.0f} % zamiast {wanted:.0f} %: oscyloskop ograniczył przesunięcie podstawy czasu do {offset:g} s.",
-                            got=(0.5 - got / length) * 100, wanted=percent, offset=got))
+            notes.append(tr("pretrigger to {got:.0f} % zamiast {wanted:.0f} %: oscyloskop ograniczył przesunięcie podstawy czasu do {offset}.",
+                            got=(0.5 - got / length) * 100, wanted=percent, offset=format_si(got, "s")))
         return notes
 
     def _apply_trigger(self, commands: tuple) -> None:
@@ -507,8 +531,9 @@ class Scope:
         """The scope's screen as PNG: 81 kB in 0.26 s, against 235 kB in 0.19 s as lossy JPG."""
         return bytes(self.query_block(":DISPlay:DATA? PNG", timeout=20.0))
 
-    def autoscale(self, channels: list[int], trigger_channel: int | None = None, slope: str = "POSitive") -> dict:
-        """Fit each channel to the screen; returns channel -> (low, high) in volts."""
+    def autoscale(self, channels: list[int], trigger_channel: int | None = None, slope: str = "POSitive", auto_depth: bool = False) -> dict:
+        """Fit each channel to the screen on the standard steps; returns channel -> (low, high) in volts.
+        auto_depth: the memory depth is on Auto, which its reply cannot tell, so Auto is what is set back."""
         levels: dict[int, tuple[float, float]] = {}
         # The trigger level comes from the channel's levels, so it is measured even if unused.
         channels = sorted(set(channels) | ({trigger_channel} if trigger_channel else set()))
@@ -517,14 +542,17 @@ class Scope:
             self.set_dc_coupling(channel)
         depth_before = self.query(":ACQuire:MDEPth?")
         self.set_memory_depth(AUTOSCALE_DEPTH)
-        for scale_of in (lambda ch: AUTOSCALE_START_V_PER_DIV * self.query_float(f":CHANnel{ch}:PROBe?"), None):
+        probes = {channel: self.query_float(f":CHANnel{channel}:PROBe?") for channel in channels}
+        for channel in channels:
+            self.write(f":CHANnel{channel}:VERNier OFF")
+        for measured in (False, True):
             for channel in channels:
-                if scale_of is not None:
-                    self.set_vertical(channel, scale_of(channel), 0.0)
+                if not measured:
+                    self.set_vertical(channel, AUTOSCALE_START_V_PER_DIV * probes[channel], 0.0)
                 else:
                     low, high = levels[channel]
                     swing = max(high - low, AUTOSCALE_MIN_SWING_V)
-                    self.set_vertical(channel, swing / AUTOSCALE_DIVISIONS, -(high + low) / 2)
+                    self.set_vertical(channel, standard_scale(swing / AUTOSCALE_DIVISIONS, probes[channel]), -(high + low) / 2)
             abort.sleep(0.3)
             self.single(force_after=0.5)
             for channel in channels:
@@ -533,7 +561,7 @@ class Scope:
         if trigger_channel is not None:
             low, high = levels[trigger_channel]
             self.set_edge_trigger(trigger_channel, (low + high) / 2, slope)
-        self.set_memory_depth(int(float(depth_before)))
+        self.set_memory_depth("AUTO" if auto_depth else int(float(depth_before)))
         self.run()
         return levels
 

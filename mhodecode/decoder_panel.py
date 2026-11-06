@@ -25,6 +25,9 @@ SORT_CATEGORY, SORT_PARENT = "category", "parent"
 WINDOW_WIDTH = 460
 WINDOW_MAX_HEIGHT = 720
 WINDOW_EXTRA_HEIGHT = 40  # margins of the window around the form
+RATE_MINIMUM = 1
+RATE_MAXIMUM = 2_000_000_000
+CUSTOM_RATE = None  # the list's entry for a rate typed by hand
 # Upstream tags, grouped so that the long list reads like the menus of an analyzer.
 DECODER_GROUPS = (
     ("Magistrale i interfejsy", (("Embedded/industrial", "Wbudowane i przemysłowe"), ("PC", "Komputery PC"),
@@ -44,8 +47,62 @@ def compact(combo):
     combo.setMinimumContentsLength(COMBO_MIN_CHARS)
 
 
+def format_rate(rate):
+    for factor, prefix in ((1_000_000, "M"), (1000, "k")):
+        if rate % factor == 0:
+            return f"{rate // factor} {prefix}bit/s"
+    return f"{rate} bit/s"
+
+
+class RateBox(QtWidgets.QWidget):
+    """Typical rates of a protocol on a list. Its last entry opens a field for any other rate."""
+    valueChanged = QtCore.pyqtSignal(int)
+
+    def __init__(self, rates, default):
+        super().__init__()
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.list = QtWidgets.QComboBox()
+        compact(self.list)
+        self.list.setMaxVisibleItems(len(rates) + 1)
+        for rate in rates:
+            self.list.addItem(format_rate(rate), rate)
+        self.list.addItem(tr("Własna…"), CUSTOM_RATE)
+        self.custom = QtWidgets.QSpinBox()
+        self.custom.setRange(RATE_MINIMUM, RATE_MAXIMUM)
+        self.custom.setSuffix(" bit/s")
+        self.custom.setKeyboardTracking(False)
+        layout.addWidget(self.list, 1)
+        layout.addWidget(self.custom, 1)
+        self.setValue(default)
+        self.list.activated.connect(self._picked)
+        self.custom.valueChanged.connect(self.valueChanged)
+
+    def _picked(self, _index):
+        rate = self.list.currentData()
+        self.custom.setVisible(rate == CUSTOM_RATE)
+        if rate == CUSTOM_RATE:
+            self.custom.setFocus()
+        else:
+            self.custom.setValue(rate)
+
+    def value(self):
+        return self.custom.value()
+
+    def setValue(self, rate):
+        position = self.list.findData(int(rate))
+        self.list.setCurrentIndex(position if position >= 0 else self.list.count() - 1)
+        self.custom.setVisible(position < 0)
+        self.custom.setValue(int(rate))
+
+    def setKeyboardTracking(self, tracking):
+        self.custom.setKeyboardTracking(tracking)
+
+
 def param_widget(param):
-    if param.choices:
+    if param.rates:
+        widget = RateBox(param.rates, param.default)
+    elif param.choices:
         widget = QtWidgets.QComboBox()
         compact(widget)
         for value, label in param.choices:
@@ -469,7 +526,7 @@ class DecoderCard(DecoderDropTarget, QtWidgets.QFrame):
         group.setLayout(form)
         widgets = {}
         for option in info.options:
-            param = option_param(option)
+            param = option_param(option, pd_id)
             widget = param_widget(param)
             if isinstance(widget, QtWidgets.QComboBox):
                 compact(widget)

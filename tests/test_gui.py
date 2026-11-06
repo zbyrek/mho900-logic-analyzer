@@ -571,8 +571,9 @@ def curve_points(plot):
 def test_log_lives_in_its_own_window_opened_from_the_menu(window):
     assert window.log_window.isWindow() and not window.log_window.isVisible()
     assert window.log_window.isAncestorOf(window.log) and not window.centralWidget().isAncestorOf(window.log)
-    view = next(action.menu() for action in window.menuBar().actions() if action.text() == "Widok")
-    entry = next(action for action in view.actions() if action.text() == "Log")
+    menus = {action.text(): action.menu() for action in window.menuBar().actions()}
+    assert "Log" not in [action.text() for action in menus["Widok"].actions()]
+    entry = next(action for action in menus["Zaawansowane"].actions() if action.text() == "Log")
     entry.trigger()
     assert window.log_window.isVisible()
     window.log_window.close()
@@ -1210,9 +1211,8 @@ def test_every_choice_sends_at_once(window):
         window.panel.settings["scale2"].set_value(0.5)
         window.panel.settings["coupling1"].set_value("AC")
         window.panel.settings["threshold2"].set_value(1.65)
-        window.panel.settings["la"].set_value(True)
-        assert link.sent == [":ACQuire:MDEPth 10000", ":TIMebase:MAIN:SCALe 0.001", ":CHANnel2:SCALe 0.5",
-                             ":CHANnel1:COUPling AC", ":LA:POD2:THReshold 1.65", ":LA:ENABle ON"]
+        assert link.sent == [":ACQuire:MDEPth 10000", ":TIMebase:MAIN:SCALe 0.001", ":CHANnel2:VERNier OFF", ":CHANnel2:SCALe 0.5",
+                             ":CHANnel1:COUPling AC", ":LA:POD2:THReshold 1.65"]
     finally:
         window.panel.link = None
 

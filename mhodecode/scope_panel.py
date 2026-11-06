@@ -1,6 +1,7 @@
 """The tab that works like the instrument's web page: live screen, parameters read back, changes sent at once."""
 from __future__ import annotations
 
+import re
 import threading
 import time
 from collections import deque
@@ -9,7 +10,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import abort, generator, trigger
 from .i18n import tr
-from .scope import DIGITAL_PODS, ScopeError
+from .scope import DIGITAL_PODS, ScopeError, format_si, vertical_scales
 from .screen_stream import MOUSE_DOWN, MOUSE_MOVE, MOUSE_UP, ScreenStream
 
 ANALOG_CHANNELS = (1, 2, 3, 4)
@@ -28,8 +29,20 @@ DEPTHS = (("Auto", "AUTO"), ("1 k", "1000"), ("10 k", "10000"), ("100 k", "10000
 ACQUIRE_TYPES = (("Normalny", "NORMal"), ("Szczytowy", "PEAK"), ("Uśredniany", "AVERages"), ("Wysoka rozdzielczość", "HRESolution"))
 COUPLINGS = (("DC", "DC"), ("AC", "AC"), ("GND", "GND"))
 BANDWIDTHS = (("Pełne", "OFF"), ("20 MHz", "20M"), ("250 MHz", "250M"))
-PROBES = tuple((f"{ratio:g}×", f"{ratio:g}") for ratio in (0.1, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000))
-VOLT_SCALES = tuple(mantissa * 10.0 ** power for power in range(-3, 2) for mantissa in (1, 2, 5))
+# What the Programming Guide lists as settable, beyond the ones on the list above.
+OTHER_DEPTHS = (125e6, 200e6, 250e6, 500e6)
+AUTO_DEPTH = "AUTO"
+AUTO_TEXT = "Auto"
+PROBE_RATIOS = (0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 20, 50, 100, 150, 200, 500, 1000, 1500,
+                2000, 5000, 10000, 15000, 20000, 50000)
+PROBES = tuple((f"{ratio:g}×", f"{ratio:g}") for ratio in PROBE_RATIOS)
+DEFAULT_PROBE = 1.0
+OFFSET_STEP_DIVISIONS = 0.1  # one click of the time offset's arrows
+TIME_OFFSET_DECIMALS = 12
+TIME_OFFSET_DEFAULT_STEP = 1e-4
+SI_FACTORS = {"": 1.0, "k": 1e3, "m": 1e-3, "u": 1e-6, "µ": 1e-6, "μ": 1e-6, "n": 1e-9, "p": 1e-12}
+SECONDS_TEXT = re.compile(r"\s*([+-]?(?:\d+[.,]?\d*|[.,]\d+)(?:[eE][+-]?\d+)?)\s*([kmuµμnp]?)s?\s*")
+SECONDS_PARTIAL = re.compile(r"[\s\d.,eE+kmuµμnps-]*")
 STATE_NAMES = {"TD": "Wyzwolono", "WAIT": "Czeka na wyzwolenie", "RUN": "Praca", "AUTO": "Auto", "STOP": "Zatrzymany"}
 STATE_QUERY = ":TRIGger:STATus?"
 RATE_QUERY = ":ACQuire:SRATe?"
@@ -40,6 +53,46 @@ MODE_QUERY = ":TRIGger:MODE?"
 
 def format_volts(value: float) -> str:
     return f"{value * 1000:g} mV" if abs(value) < 1 else f"{value:g} V"
+
+
+def format_points(points: float) -> str:
+    for factor, prefix in ((1e6, " M"), (1e3, " k")):
+        if points >= factor:
+            return f"{points / factor:g}{prefix}"
+    return f"{points:g}"
+
+
+def parse_seconds(text: str) -> float:
+    """"1,5 ms", "2us", "-3 ns" or "0.1", which is in seconds. Raises ValueError on anything else."""
+    found = SECONDS_TEXT.fullmatch(text)
+    if found is None:
+        raise ValueError(text)
+    return float(found.group(1).replace(",", ".")) * SI_FACTORS[found.group(2)]
+
+
+class SecondsBox(QtWidgets.QDoubleSpinBox):
+    """A time shown with an SI prefix. It also takes one when typed."""
+
+    def __init__(self, limit):
+        super().__init__()
+        self.setDecimals(TIME_OFFSET_DECIMALS)
+        self.setRange(-limit, limit)
+
+    def textFromValue(self, value):
+        return format_si(value, "s")
+
+    def valueFromText(self, text):
+        try:
+            return parse_seconds(text)
+        except ValueError:
+            return self.value()
+
+    def validate(self, text, position):
+        try:
+            state = QtGui.QValidator.Acceptable if self.minimum() <= parse_seconds(text) <= self.maximum() else QtGui.QValidator.Intermediate
+        except ValueError:
+            state = QtGui.QValidator.Intermediate if SECONDS_PARTIAL.fullmatch(text) else QtGui.QValidator.Invalid
+        return state, text, position
 
 
 class LiveLink(QtCore.QThread):
@@ -238,18 +291,67 @@ class ChoiceSetting(Setting):
         self.widget.setCurrentIndex(max(0, self.widget.findData(value)))
 
 
+class DepthSetting(ChoiceSetting):
+    """The reply is a number of points also on Auto, and no reply tells Auto apart. A number no fixed depth has,
+    as 500 k (measured), can only be Auto. Otherwise this program knows Auto from having set it."""
+    auto = False
+
+    def _fixed(self, points):
+        listed = [self.widget.itemData(i) for i in range(self.widget.count()) if self.widget.itemData(i) != AUTO_DEPTH]
+        return points in [float(value) for value in listed] or points in OTHER_DEPTHS
+
+    def _show_auto(self, points=None):
+        position = self.widget.findData(AUTO_DEPTH)
+        name = tr(AUTO_TEXT)
+        self.widget.setItemText(position, name if points is None else f"{name} ({format_points(points)})")
+        self.widget.setCurrentIndex(position)
+
+    def apply_reply(self, reply):
+        points = float(reply)
+        if self.auto or not self._fixed(points):
+            self.auto = True
+            self._show_auto(points)
+        else:
+            super().apply_reply(reply)
+
+    def set_auto(self, auto):
+        """Set by an acquisition, not from this list. What it shows comes with the next reply."""
+        self.auto = auto
+        if not auto:
+            self.widget.setItemText(self.widget.findData(AUTO_DEPTH), tr(AUTO_TEXT))
+
+    def changed(self, *_args):
+        self.set_auto(self.current() == AUTO_DEPTH)
+        if self.auto:
+            self._show_auto()
+        super().changed()
+
+
 class ScaleSetting(Setting):
-    """A 1-2-5 list of numbers. A value between its steps, set on the instrument, is added to the list."""
+    """A 1-2-5 list of numbers. A value between its steps, set on the instrument, is shown for as long as it is set."""
 
     def __init__(self, panel, read, widget, send, values, label):
         super().__init__(panel, read, widget, send)
         self.label = label
-        for value in values:
-            widget.addItem(label(value), value)
+        self.extra = None
+        self._fill(values)
         widget.activated.connect(self.changed)
+
+    def _fill(self, values):
+        self.widget.clear()
+        self.extra = None
+        for value in values:
+            self.widget.addItem(self.label(value), value)
+
+    def _drop_extra(self):
+        if self.extra is not None:
+            self.widget.removeItem(self.widget.findData(self.extra))
+            self.extra = None
 
     def apply_reply(self, reply):
         value = float(reply)
+        if self.extra is not None and abs(self.extra - value) > abs(value) * 1e-3:
+            self._drop_extra()
         for position in range(self.widget.count()):
             if abs(self.widget.itemData(position) - value) <= abs(value) * 1e-3:
                 self.widget.setCurrentIndex(position)
@@ -257,12 +359,63 @@ class ScaleSetting(Setting):
         place = next((i for i in range(self.widget.count()) if self.widget.itemData(i) > value), self.widget.count())
         self.widget.insertItem(place, self.label(value), value)
         self.widget.setCurrentIndex(place)
+        self.extra = value
+
+    def changed(self, *_args):
+        if self.current() != self.extra:
+            self._drop_extra()
+        super().changed()
 
     def current(self):
         return self.widget.currentData()
 
     def assign(self, value):
         self.apply_reply(str(value))
+
+
+class VoltScaleSetting(ScaleSetting):
+    """The steps follow the channel's probe ratio. A step from this list turns the channel's fine adjustment off."""
+
+    def __init__(self, panel, read, widget, send, head):
+        super().__init__(panel, read, widget, send, vertical_scales(DEFAULT_PROBE), format_volts)
+        self.head = head
+        self.probe = DEFAULT_PROBE
+
+    def set_probe(self, ratio):
+        if ratio != self.probe:
+            self.probe = ratio
+            shown = self.current()
+            self._fill(vertical_scales(ratio))
+            if shown is not None:
+                self.apply_reply(str(shown))
+
+    def changed(self, *_args):
+        self.panel.submit(f"{self.head}:VERNier OFF")
+        super().changed()
+
+
+class ProbeSetting(ChoiceSetting):
+    """Its ratio also decides the steps of the channel's scale. A ratio set on the instrument may be its own."""
+
+    def __init__(self, panel, read, widget, send, scale):
+        super().__init__(panel, read, widget, send)
+        self.scale = scale
+
+    def apply_reply(self, reply):
+        ratio = float(reply)
+        count = self.widget.count()
+        position = next((i for i in range(count) if abs(float(self.widget.itemData(i)) - ratio) <= abs(ratio) * 1e-3), None)
+        if position is None:
+            position = next((i for i in range(count) if float(self.widget.itemData(i)) > ratio), count)
+            self.widget.insertItem(position, f"{ratio:g}×", f"{ratio:g}")
+        self.widget.setCurrentIndex(position)
+        self.scale.set_probe(ratio)
+
+    def changed(self, *_args):
+        self.scale.set_probe(float(self.current()))
+        super().changed()
+        if self.panel.link is not None:  # the scope has just changed the scale along with the ratio
+            self.panel.link.urgent.append(self.scale.read)
 
 
 class NumberSetting(Setting):
@@ -294,6 +447,24 @@ class CheckSetting(Setting):
 
     def assign(self, value):
         self.widget.setChecked(bool(value))
+
+
+class PodSetting(CheckSetting):
+    """A group of digital channels. The scope has them on as long as a group is on: the last group off turns :LA:ENABle
+    off, and :LA:ENABle on brings back the groups it had before, so the other group is put right (measured)."""
+
+    def __init__(self, panel, pod, widget):
+        super().__init__(panel, f":LA:POD{pod}:DISPlay?", widget, lambda value, pod=pod: f":LA:POD{pod}:DISPlay {'ON' if value else 'OFF'}")
+        self.pod = pod
+
+    def changed(self, *_args):
+        if self.current():
+            self.panel.submit(":LA:ENABle ON")
+        super().changed()
+        if self.current():
+            for pod, check in self.panel.pod_on.items():
+                if pod != self.pod and not check.isChecked():
+                    self.panel.submit(f":LA:POD{pod}:DISPlay OFF", f":LA:POD{pod}:DISPlay?")
 
 
 class HexSetting(Setting):
@@ -463,12 +634,13 @@ class ScopePanel(QtWidgets.QWidget):
         self._add("time_scale", ScaleSetting(self, TIME_QUERY, self.time_scale, lambda value: f":TIMebase:MAIN:SCALe {value:g}",
                                              generator.time_scale_choices(), generator.format_time_scale))
         form.addRow(self.owner._label("Podstawa czasu"), self.time_scale)
-        self.time_offset = self._spin(-1000.0, 1000.0, 9, " s")
-        self.time_offset.setSingleStep(1e-3)
+        self.time_offset = SecondsBox(1000.0)
+        self.time_offset.setSingleStep(TIME_OFFSET_DEFAULT_STEP)
+        self.owner._bind(self.time_offset.setToolTip, "Można wpisać z przedrostkiem, np. 1,5 ms, 20 µs lub 20 us. Strzałki przesuwają o 0,1 działki.")
         self._add("time_offset", NumberSetting(self, ":TIMebase:MAIN:OFFSet?", self.time_offset, lambda value: f":TIMebase:MAIN:OFFSet {value:.10g}"))
         form.addRow(self.owner._label("Przesunięcie czasu"), self.time_offset)
         self.depth = self._combo(DEPTHS)
-        self._add("depth", ChoiceSetting(self, DEPTH_QUERY, self.depth, lambda value: f":ACQuire:MDEPth {value}"))
+        self._add("depth", DepthSetting(self, DEPTH_QUERY, self.depth, lambda value: f":ACQuire:MDEPth {value}"))
         form.addRow(self.owner._label("Głębokość pamięci"), self.depth)
         self.acquire_type = self._combo(ACQUIRE_TYPES)
         self._add("acquire_type", ChoiceSetting(self, ":ACQuire:TYPE?", self.acquire_type, lambda value: f":ACQuire:TYPE {value}"))
@@ -491,8 +663,8 @@ class ScopePanel(QtWidgets.QWidget):
             self.channel_on[channel] = self._add(f"on{channel}", CheckSetting(
                 self, f"{head}:DISPlay?", check, lambda value, head=head: f"{head}:DISPlay {'ON' if value else 'OFF'}"))
             scale = self._combo()
-            self.channel_scale[channel] = self._add(f"scale{channel}", ScaleSetting(
-                self, f"{head}:SCALe?", scale, lambda value, head=head: f"{head}:SCALe {value:g}", VOLT_SCALES, format_volts))
+            scale_setting = VoltScaleSetting(self, f"{head}:SCALe?", scale, lambda value, head=head: f"{head}:SCALe {value:g}", head)
+            self.channel_scale[channel] = self._add(f"scale{channel}", scale_setting)
             offset = self._spin(-1000.0, 1000.0, 3, " V")
             offset.setSingleStep(0.1)
             self.channel_offset[channel] = self._add(f"offset{channel}", NumberSetting(
@@ -504,8 +676,8 @@ class ScopePanel(QtWidgets.QWidget):
             self.channel_band[channel] = self._add(f"band{channel}", ChoiceSetting(
                 self, f"{head}:BWLimit?", band, lambda value, head=head: f"{head}:BWLimit {value}"))
             probe = self._combo(PROBES)
-            self.channel_probe[channel] = self._add(f"probe{channel}", ChoiceSetting(
-                self, f"{head}:PROBe?", probe, lambda value, head=head: f"{head}:PROBe {value}"))
+            self.channel_probe[channel] = self._add(f"probe{channel}", ProbeSetting(
+                self, f"{head}:PROBe?", probe, lambda value, head=head: f"{head}:PROBe {value}", scale_setting))
             for column, widget in enumerate((check, scale, offset, coupling, band, probe)):
                 grid.addWidget(widget, row, column)
         return group
@@ -513,17 +685,11 @@ class ScopePanel(QtWidgets.QWidget):
     def _digital_group(self):
         group = self._group("Kanały cyfrowe")
         grid = QtWidgets.QGridLayout(group)
-        self.la_enable = QtWidgets.QCheckBox()
-        self.owner._bind(self.la_enable.setText, "Włączone (D0–D15)")
-        self.owner._bind(self.la_enable.setToolTip, "Włącza lub wyłącza kanały cyfrowe na oscyloskopie")
-        self._add("la", CheckSetting(self, ":LA:ENABle?", self.la_enable, lambda value: f":LA:ENABle {'ON' if value else 'OFF'}"))
-        grid.addWidget(self.la_enable, 0, 0, 1, 3)
         self.pod_on, self.pod_threshold = {}, {}
-        for row, (pod, name) in enumerate(zip(DIGITAL_PODS, ("D0–D7", "D8–D15")), start=1):
+        for row, (pod, name) in enumerate(zip(DIGITAL_PODS, ("D0–D7", "D8–D15"))):
             check = QtWidgets.QCheckBox(name)
-            self.owner._bind(check.setToolTip, "Widoczność grupy na ekranie oscyloskopu")
-            self.pod_on[pod] = self._add(f"pod{pod}", CheckSetting(
-                self, f":LA:POD{pod}:DISPlay?", check, lambda value, pod=pod: f":LA:POD{pod}:DISPlay {'ON' if value else 'OFF'}"))
+            self.owner._bind(check.setToolTip, "Włącza tę grupę kanałów na oscyloskopie.")
+            self.pod_on[pod] = self._add(f"pod{pod}", PodSetting(self, pod, check))
             level = self._spin(-15.0, 15.0, 3, " V")
             level.setSingleStep(0.1)
             self.pod_threshold[pod] = self._add(f"threshold{pod}", NumberSetting(
@@ -533,7 +699,7 @@ class ScopePanel(QtWidgets.QWidget):
             grid.addWidget(level, row, 2)
         note = self.owner._label("Domyślny próg to 0 V: logika 0–3,3 V wymaga progu około 1,65 V, inaczej kanały nie zmieniają stanu.")
         note.setWordWrap(True)
-        grid.addWidget(note, 3, 0, 1, 3)
+        grid.addWidget(note, len(DIGITAL_PODS), 0, 1, 3)
         return group
 
     def _trigger_group(self):
@@ -617,6 +783,8 @@ class ScopePanel(QtWidgets.QWidget):
         """Called for every change of a setting's widget, by the operator or from a reply.
         Every reading of the type or the condition comes here, so the form is redone only when
         one of them differs: restarting the round each time would starve the fields after them."""
+        if setting is self.settings.get("time_scale") and setting.current():
+            self.time_offset.setSingleStep(setting.current() * OFFSET_STEP_DIVISIONS)
         if setting is self.settings.get("trigger_mode") or setting in [s.get("WHEN") for s in self.trigger_settings.values()]:
             form = (self.trigger_mode.currentData(), self._condition(self.current_mode()))
             if form != self.shown_form:
@@ -728,6 +896,14 @@ class ScopePanel(QtWidgets.QWidget):
                 if setting.read == query:
                     setting.show(reply)
                     return
+
+    def note_depth(self, depth) -> None:
+        """An acquisition sets this depth, None for none."""
+        if depth is not None:
+            self.settings["depth"].set_auto(depth == AUTO_DEPTH)
+
+    def depth_is_auto(self) -> bool:
+        return self.settings["depth"].auto
 
     def edge_setting(self, key) -> Setting:
         return self.trigger_settings["EDGE"][key]

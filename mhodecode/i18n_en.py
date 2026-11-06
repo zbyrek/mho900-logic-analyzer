@@ -368,8 +368,7 @@ ENGLISH: dict[str, str] = {
     "20 MHz": "20 MHz",
     "250 MHz": "250 MHz",
     "Kanały cyfrowe": "Digital channels",
-    "Włączone (D0–D15)": "On (D0–D15)",
-    'Widoczność grupy na ekranie oscyloskopu': "Shows the group on the scope's screen",
+    "Włącza tę grupę kanałów na oscyloskopie.": "Turns this group of channels on on the scope.",
     "Próg": "Threshold",
     "Domyślny próg to 0 V: logika 0–3,3 V wymaga progu około 1,65 V, inaczej kanały nie zmieniają stanu.": "The default threshold is 0 V: 0–3.3 V logic needs about 1.65 V, or the channels will not change state.",
     "Tryb": "Sweep",
@@ -480,7 +479,6 @@ ENGLISH: dict[str, str] = {
     "Po odznaczeniu oczekiwane dane wpisujesz w polu poniżej.": "When unchecked, you type the expected data in the field below.",
     "Szuka oczekiwanych danych w wynikach wszystkich dekoderów.": "Looks for the expected data in the results of all decoders.",
     "Włącza lub wyłącza kanał na oscyloskopie": "Turns the channel on or off on the scope",
-    "Włącza lub wyłącza kanały cyfrowe na oscyloskopie": "Turns the digital channels on or off on the scope",
     "Program sam dobiera próg logiczny z przebiegu. Po odznaczeniu wpisujesz go ręcznie.": "The program picks the logic threshold from the waveform. When unchecked, you type it in.",
     "Wybiera, które wiersze tego dekodera są widoczne": "Chooses which rows of this decoder are visible",
     "Dekodery powyżej biorą dane z tego, więc znikają razem z nim.": "The decoders above take their data from this one, so they go with it.",
@@ -625,6 +623,13 @@ ENGLISH: dict[str, str] = {
         "An acquisition sets the time base offset on the scope so that this share of the memory lies before the trigger. "
         "Unchecked: the offset set on the scope stays. Reading the memory does not send it. "
         "The scope does not go below −5 divisions, so with a memory longer than the screen a large pretrigger cannot be reached and the log says so.",
-    "pretrigger to {got:.0f} % zamiast {wanted:.0f} %: oscyloskop ograniczył przesunięcie podstawy czasu do {offset:g} s.":
-        "pretrigger is {got:.0f} % instead of {wanted:.0f} %: the scope limited the time base offset to {offset:g} s.",
+    "pretrigger to {got:.0f} % zamiast {wanted:.0f} %: oscyloskop ograniczył przesunięcie podstawy czasu do {offset}.":
+        "pretrigger is {got:.0f} % instead of {wanted:.0f} %: the scope limited the time base offset to {offset}.",
+    "Własna…": "Custom…",
+    "Można wpisać z przedrostkiem, np. 1,5 ms, 20 µs lub 20 us. Strzałki przesuwają o 0,1 działki.":
+        "Can be typed with a prefix, such as 1.5 ms, 20 µs or 20 us. The arrows move it by 0.1 division.",
+    "Więcej punktów to dłuższy zapis i dłuższy odczyt. Auto: liczbę punktów dobiera oscyloskop tak, by zapis objął ekran. "
+    "Bez zmian zostawia to, co jest na oscyloskopie.":
+        "More points make a longer record and a longer read. Auto: the scope picks the number of points so that the record covers the screen. "
+        "No change leaves what is set on the scope.",
 }
