@@ -438,7 +438,7 @@ def enable_dpi_scaling() -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MHO900 protocol decoder")
+    parser = argparse.ArgumentParser(description="MHO900 Logic Analyzer")
     parser.add_argument("--selftest", metavar="HOST", help="go through the window's functions on the AFG loop-back and exit")
     parser.add_argument("--output", default=".", help="folder for the self-test log and screenshots")
     args = parser.parse_args()

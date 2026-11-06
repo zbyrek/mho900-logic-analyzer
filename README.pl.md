@@ -1,4 +1,4 @@
-# MHO900 Dekoder protokołów
+# MHO900 Logic Analyzer
 
 [English](README.md) | Polski
 

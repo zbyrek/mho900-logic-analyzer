@@ -1,4 +1,4 @@
-"""Main window of the MHO900 protocol decoder."""
+"""Main window of MHO900 Logic Analyzer."""
 from __future__ import annotations
 
 import csv
@@ -78,7 +78,7 @@ VERBOSE_LOG_LINES = 20000
 SCOPE_TAB = 1
 CAPTURE_DIVISIONS = 10
 SINGLE_MARGIN_S = 10.0  # added to the capture length when waiting for a single acquisition
-SETTINGS = ("MHO900Decoder", "MHO900Decoder")
+SETTINGS = ("MHO900Decoder", "MHO900Decoder")  # the program's former name: a new one here would lose everyone's saved settings
 WINDOW_LAYOUT_VERSION = 1  # raised when a saved layout would put the bars in the wrong place; an older one is then ignored
 
 
@@ -294,7 +294,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._apply_language()
 
     def _apply_language(self):
-        self.setWindowTitle(tr("MHO900 Protocol Decoder {version}", version=__version__))
+        self.setWindowTitle(tr("MHO900 Logic Analyzer {version}", version=__version__))
         for setter, text in self.bindings:
             setter(tr(text) if text else "")
         self.model.retranslate()
@@ -688,7 +688,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _show_about(self):
         QtWidgets.QMessageBox.about(self, tr("About and licenses"), tr(
-            "MHO900 Protocol Decoder {version}. Contains {count} decoders from the libsigrokdecode project (sigrok.org), unmodified, under the GPLv2+, GPLv3+, BSD and MIT licenses. The GPLv3 text and the list of authors are in the srd_decoders folder. The layout of the decoder panel follows PulseView (GPLv3).Distributed together with them, this program falls under the GNU GPL version 3 or later, without any warranty, and its recipients have a right to the source code.",
+            "MHO900 Logic Analyzer {version}. Contains {count} decoders from the libsigrokdecode project (sigrok.org), unmodified, under the GPLv2+, GPLv3+, BSD and MIT licenses. The GPLv3 text and the list of authors are in the srd_decoders folder. The layout of the decoder panel follows PulseView (GPLv3).Distributed together with them, this program falls under the GNU GPL version 3 or later, without any warranty, and its recipients have a right to the source code.",
             version=__version__, count=len(SIGROK)))
 
     def _group(self, title):
