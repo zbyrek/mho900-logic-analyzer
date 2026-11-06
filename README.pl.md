@@ -119,12 +119,12 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   wyzwolenie bez limitu. Próg ustawiony na kanale działa w widoku Logika, w dekoderach z progiem automatycznym i w wyzwalaniu.
   Bez progu poziom wyzwalania to środek sygnału z ostatniego odczytu, a bez odczytu zostaje poziom z oscyloskopu.
 - **Zakładka Przebiegi:** kółko myszy powiększa, a przeciąganie lub suwak pod przebiegami przesuwa w czasie. Widok **Logika** pokazuje
-  stany po progu, a **Analog** napięcia. Wiersze przebiegów są niskie, a miejsce dostają wiersze dekodera. Skala pionowa
+  stany po progu, a **Analog** napięcia. Przy powiększeniu, w którym próbki da się rozróżnić, **Analog** zaznacza każdą kropką. Wiersze przebiegów są niskie, a miejsce dostają wiersze dekodera. Skala pionowa
   w widoku **Analog** jest dopasowywana raz, do całego odczytu, i nie zmienia się przy zmianie skali czasu. Kliknięcie osi
   napięcia pozwala wpisać górę i dół zakresu albo wrócić do skali automatycznej, a wpisany zakres zostaje też przy kolejnych
   odczytach. Kursory, jak w PulseView, mają nad osią
   czasu flagi A i B i strzałkę z czasem i częstotliwością między nimi, a obszar między nimi jest zacieniowany. Przeciąga się
-  linie albo flagi. Położenia A i B podaje pasek stanu. Paski adnotacji mają kolor wiersza dla danych i szary dla pól
+  linie albo flagi. Tam, gdzie widok **Analog** pokazuje kropki, kursor przeciągnięty blisko próbki przyciąga się do niej, a między próbkami porusza się swobodnie. Położenia A i B podaje pasek stanu. Paski adnotacji mają kolor wiersza dla danych i szary dla pól
   sterujących protokołu (start, stop, ACK, adres). Tak samo wyróżnia je tabela. Tekst, który nie mieści się na pasku w żadnej
   postaci, jest pomijany. Kliknięcie paska adnotacji zaznacza jej wiersz w tabeli, a kliknięcie wiersza pokazuje ją na
   przebiegu.

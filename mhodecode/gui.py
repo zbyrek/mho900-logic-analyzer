@@ -21,7 +21,8 @@ from .decoders.base import DecodeResult
 from .i18n import LANGUAGES, language, set_language, tr
 from .packet_fit import fit_time_to_packet
 from .channel_controls import ChannelDialog, ScopeSettings
-from .cursors import CursorOverlay, CursorStrip, CursorView, LineMark, MarkOverlay, MarkView, span_text
+from .cursors import (MIN_DOT_SPACING, SAMPLE_DOT_SIZE, CursorOverlay, CursorStrip, CursorView, LineMark, MarkOverlay, MarkView,
+                      sample_near, samples_in_view, span_text)
 from .scope import DEFAULT_FORMAT, CapturePlan, Scope, ScopeError, Waveform, channel_name, format_si, is_digital
 from .scope_panel import ScopePanel
 from .scope_status import ScopeStatusBar
@@ -231,6 +232,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plots: list[pg.PlotItem] = []
         self.channel_rows: dict[int, pg.PlotItem] = {}
         self.analog_rows: dict[int, pg.PlotItem] = {}
+        self.sample_dots: dict[int, tuple[pg.ScatterPlotItem, Waveform]] = {}
         self.signal_known: dict[int, bool] = {}  # per capture, since finding out takes long on a big one
         self.memory_read = False  # a capture or a file came in, so it is known which channels are empty
         self.absent_channels: set[int] = set()  # asked of the scope in the last read, but not in its memory
@@ -1657,6 +1659,26 @@ class MainWindow(QtWidgets.QMainWindow):
         plot.plot(times, wave.volts, pen=pg.mkPen(color, width=1))
         plot.setYRange(*self._y_range(channel, wave), padding=0)
         self.analog_rows[channel] = plot
+        dots = pg.ScatterPlotItem(size=SAMPLE_DOT_SIZE, pen=pg.mkPen(None), brush=pg.mkBrush(color))
+        dots.setAcceptedMouseButtons(QtCore.Qt.NoButton)  # a click on a dot belongs to the row
+        plot.addItem(dots, ignoreBounds=True)
+        self.sample_dots[channel] = (dots, wave)
+
+    def _pixels_per_second(self):
+        """Read from the master's range, since linked views update after its signal."""
+        low, high = self.master.viewRange()[0]
+        return self.master.vb.sceneBoundingRect().width() / max(high - low, 1e-30)
+
+    def _update_sample_dots(self):
+        """Only the samples in view, and only when they can be told apart, so a long capture stays quick."""
+        low, high = self.master.viewRange()[0]
+        pixels_per_second = self._pixels_per_second()
+        for dots, wave in self.sample_dots.values():
+            if wave.dt * pixels_per_second < MIN_DOT_SPACING:
+                dots.clear()
+                continue
+            first, stop = samples_in_view(wave.t0, wave.dt, len(wave.volts), low, high)
+            dots.setData(wave.t0 + np.arange(first, stop) * wave.dt, wave.volts[first:stop])
 
     def _y_range(self, channel, wave):
         """From the whole capture, so that looking at a part of it in time changes nothing."""
@@ -1803,6 +1825,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lane_colors = {}
         self.channel_rows = {}
         self.analog_rows = {}
+        self.sample_dots = {}
         names = self._channel_names()
         shown = self._shown_channels(names)
         if not shown and not self.cards:
@@ -1998,6 +2021,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_time_bar()
         if self.master is None:
             return
+        self._update_sample_dots()
         data_font = QtGui.QFont(self.font())
         data_font.setBold(True)
         field_font = QtGui.QFont(self.font())
@@ -2188,13 +2212,18 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.syncing_cursors:
             return
         self.syncing_cursors = True
-        self.cursor_positions[which] = moved.value()
+        value = self._snapped_to_sample(moved.value())
+        self.cursor_positions[which] = value
         for line in self.cursor_lines[which]:
-            if line is not moved:
-                line.setValue(moved.value())
+            line.setValue(value)
         self.syncing_cursors = False
         self.cursor_overlay.update()
         self._show_cursor_readout()
+
+    def _snapped_to_sample(self, value):
+        pixels_per_second = self._pixels_per_second()
+        near = (sample_near(value, wave.t0, wave.dt, len(wave.volts), pixels_per_second) for _dots, wave in self.sample_dots.values())
+        return min((sample for sample in near if sample is not None), key=lambda sample: abs(sample - value), default=value)
 
     def _show_cursor_readout(self):
         if not self.cursor_lines[0]:

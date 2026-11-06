@@ -5,6 +5,7 @@ their own above the time axis, where they cover nothing.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Callable
 
@@ -17,6 +18,10 @@ FLAG_MARGIN = 4  # room on both sides of the letter
 ARROW_HEAD = 7
 OVERLAY_DEPTH = 1000  # above every row of the view
 LETTERS = ("A", "B")
+SAMPLE_DOT_SIZE = 5
+MIN_DOT_SPACING = 6  # pixels between samples: any closer and the dots run together into a thick line
+SNAP_PIXELS = 4  # the most a sample draws a cursor from
+SNAP_SHARE = 1 / 4  # of the distance between samples, so that dense samples leave room to stop between them
 
 
 def span_text(distance: float) -> str:
@@ -32,6 +37,22 @@ def flag_centers(positions: tuple[float, float], half: float) -> tuple[float, fl
         return positions
     middle = (first + second) / 2
     return (middle - half, middle + half) if first <= second else (middle + half, middle - half)
+
+
+def samples_in_view(t0: float, dt: float, count: int, low: float, high: float) -> tuple[int, int]:
+    """The first sample in a time range and the one after the last. They are equal when none is in it."""
+    first = max(math.ceil((low - t0) / dt), 0)
+    stop = min(math.floor((high - t0) / dt) + 1, count)
+    return first, max(first, stop)
+
+
+def sample_near(value: float, t0: float, dt: float, count: int, pixels_per_second: float) -> float | None:
+    """The sample that draws a cursor at this time, or None if it stays where it is. Only samples with dots draw it."""
+    spacing = dt * pixels_per_second
+    if spacing < MIN_DOT_SPACING:
+        return None
+    nearest = t0 + dt * min(max(round((value - t0) / dt), 0), count - 1)
+    return nearest if abs(nearest - value) * pixels_per_second <= min(SNAP_PIXELS, spacing * SNAP_SHARE) else None
 
 
 @dataclass(frozen=True)

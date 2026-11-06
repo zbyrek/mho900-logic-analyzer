@@ -123,11 +123,11 @@ Settings open in a separate window rather than a popup.
   threshold and in the trigger. With no threshold, the trigger level is the middle of the signal from the last read, and with no read
   the level on the scope stays.
 - **Waveforms tab:** the mouse wheel zooms, and dragging or the scroll bar under the waveforms moves along the time axis. The **Logic** view shows states after the threshold,
-  and **Analog** shows voltages. Waveform rows are low, and decoder rows get the room. The vertical scale in the **Analog** view is fitted
+  and **Analog** shows voltages. Zoomed in far enough to tell the samples apart, **Analog** marks each one with a dot. Waveform rows are low, and decoder rows get the room. The vertical scale in the **Analog** view is fitted
   once, to the whole read, and does not change when the time scale does. Clicking the voltage axis lets you enter the top and bottom of
   the range or go back to the automatic scale, and an entered range stays for further reads. Cursors, as in PulseView, have flags A
   and B above the time axis and an arrow with the time and frequency between them, and the area between them is shaded. You drag the
-  lines or the flags. The status bar gives the positions of A and B. Annotation bars have the row's color for data and gray for the
+  lines or the flags. Where the **Analog** view shows dots, a cursor dragged close to a sample is drawn to it, and between samples it moves freely. The status bar gives the positions of A and B. Annotation bars have the row's color for data and gray for the
   control fields of a protocol (start, stop, ACK, address). The table marks them the same way. Text that does not fit on a bar in any
   form is left out. Clicking an annotation bar selects its row in the table, and clicking a row shows it on the waveform.
 - **Oscilloscope tab:** the scope's screen live, from the H.264 stream of the scope's web page, where the left mouse button acts like

@@ -1233,6 +1233,81 @@ def test_cursor_lines_and_flags_can_be_dragged_through_the_overlay(window):
     window.hide()
 
 
+def analog_ramp(window):
+    window.resize(1400, 900)
+    window.show()
+    window.waves = {1: Waveform(1, np.linspace(0, 3, 1000, dtype=np.float32), 3e-6, 1e-3)}
+    window.new_decoder("UART")
+    window.display_mode.setCurrentIndex(window.display_mode.findData("analog"))
+    window._plot()
+    window.zoom_fit()
+    for _ in range(10):
+        QtWidgets.QApplication.processEvents()
+
+
+def test_analog_samples_get_dots_only_where_they_can_be_told_apart(window):
+    analog_ramp(window)
+    dots, wave = window.sample_dots[1]
+    assert len(dots.data) == 0  # 1000 samples are too dense for the row's width
+    window.master.setXRange(wave.t0 + 9.5 * wave.dt, wave.t0 + 40.5 * wave.dt, padding=0)
+    assert list(dots.data["x"]) == pytest.approx(list(wave.t0 + np.arange(10, 41) * wave.dt))
+    assert list(dots.data["y"]) == pytest.approx(list(wave.volts[10:41]))
+    window.master.setXRange(wave.t0 + 899.5 * wave.dt, wave.t0 + 930.5 * wave.dt, padding=0)  # they follow the view
+    assert dots.data["x"][0] == pytest.approx(wave.t0 + 900 * wave.dt)
+    window.zoom_fit()
+    assert len(dots.data) == 0
+    window.grab()
+    window.display_mode.setCurrentIndex(window.display_mode.findData("logic"))
+    assert window.sample_dots == {}
+    window.hide()
+
+
+def test_a_dragged_cursor_is_drawn_to_a_close_sample_only_in_the_analog_view(window):
+    analog_ramp(window)
+    _dots, wave = window.sample_dots[1]
+    window.cursors_button.setChecked(True)
+    window.master.setXRange(wave.t0 + 10 * wave.dt, wave.t0 + 40 * wave.dt, padding=0)
+    for _ in range(10):
+        QtWidgets.QApplication.processEvents()
+    sample = wave.t0 + 20 * wave.dt
+    pixels = wave.dt * window._pixels_per_second()
+    assert pixels > 16  # the full reach applies
+    window._drag_cursor(0, window._scene_x(sample) + 2)
+    assert window.cursor_positions[0] == pytest.approx(sample)
+    assert [line.value() for line in window.cursor_lines[0]] == pytest.approx([sample] * len(window.plots))
+    row_y = window.channel_rows[1].vb.sceneBoundingRect().center().y()
+    view = window.graphics
+    later = wave.t0 + 30 * wave.dt
+    drag(view, view.mapFromScene(QtCore.QPointF(window._scene_x(sample), row_y)),
+         view.mapFromScene(QtCore.QPointF(window._scene_x(later) + 2, row_y)))
+    assert window.cursor_positions[0] == pytest.approx(later)
+    assert [line.value() for line in window.cursor_lines[0]] == pytest.approx([later] * len(window.plots))
+    between = sample + wave.dt / 2
+    window._drag_cursor(0, window._scene_x(between))
+    assert window.cursor_positions[0] == pytest.approx(between, abs=wave.dt / pixels)
+    window.display_mode.setCurrentIndex(window.display_mode.findData("logic"))
+    window.master.setXRange(wave.t0 + 10 * wave.dt, wave.t0 + 40 * wave.dt, padding=0)
+    window._drag_cursor(0, window._scene_x(sample) + 2)
+    assert window.cursor_positions[0] != pytest.approx(sample, abs=wave.dt / pixels)
+    window.cursors_button.setChecked(False)
+    window.hide()
+
+
+def test_samples_in_view_and_the_reach_of_a_sample():
+    from mhodecode.cursors import sample_near, samples_in_view
+    assert samples_in_view(0.0, 1.0, 10, 2.5, 5.5) == (3, 6)
+    assert samples_in_view(0.0, 1.0, 10, -5.0, 100.0) == (0, 10)
+    assert samples_in_view(0.0, 1.0, 10, 20.0, 30.0)[0] == samples_in_view(0.0, 1.0, 10, 20.0, 30.0)[1]
+    assert samples_in_view(0.0, 1.0, 10, 2.2, 2.8)[0] == samples_in_view(0.0, 1.0, 10, 2.2, 2.8)[1]
+    assert sample_near(3.09, 0.0, 1.0, 10, 40.0) == 3.0  # under 4 pixels away, at 40 pixels between samples
+    assert sample_near(3.11, 0.0, 1.0, 10, 40.0) is None
+    assert sample_near(3.2, 0.0, 1.0, 10, 8.0) == 3.0
+    assert sample_near(3.3, 0.0, 1.0, 10, 8.0) is None  # dense samples reach less: 2 of 8 pixels
+    assert sample_near(3.2, 0.0, 1.0, 10, 5.0) is None  # no dots, so nothing draws it
+    assert sample_near(3.0, 0.0, 1.0, 10, 5.0) is None
+    assert sample_near(12.0, 0.0, 1.0, 10, 40.0) is None  # past the last sample
+
+
 def test_flags_of_close_cursors_stand_side_by_side():
     from mhodecode.cursors import flag_centers
     assert flag_centers((100.0, 200.0), 10.0) == (100.0, 200.0)
