@@ -1,0 +1,6 @@
+numpy==2.2.6
+PyQt5==5.15.11
+pyqtgraph==0.14.0
+pyinstaller==6.22.3
+pytest==9.2.0
+av==17.1.0
