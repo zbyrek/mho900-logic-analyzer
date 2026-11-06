@@ -56,6 +56,8 @@ ROW_TABLE_COLUMN_WIDTHS = {2: 170}  # decoder rows have long names
 TEXT_MARGIN_PIXELS = 6  # a text needs this much more room than its own width
 CURSOR_STRIP_LINES = 2.3
 MARK_STRIP_LINES = 1.2
+TIME_BAR_STEPS = 1 << 30  # fine enough to show a few samples of the deepest memory; a scroll bar holds 32-bit integers
+TIME_BAR_ARROW_STEP = 0.1  # of the visible time, for each click on an arrow
 LOGIC_Y_RANGE = (-0.2, 1.2)
 ANALOG_Y_MARGIN = 0.05  # of the swing, on both sides
 MIN_Y_SPAN_SWINGS = 2  # in the smallest swing of a signal: noise must not fill the row and look like one
@@ -334,8 +336,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mark_strip = pg.GraphicsWidget()
         self.mark_overlay = MarkOverlay(self._mark_view)
         self.graphics.scene().addItem(self.mark_overlay)
+        self.time_bar = QtWidgets.QScrollBar(QtCore.Qt.Horizontal)
+        self._bind(self.time_bar.setToolTip, "Moves the view along the time axis.")
+        self.time_bar.valueChanged.connect(self._scroll_time)
+        waveforms = QtWidgets.QWidget()
+        waveforms_layout = QtWidgets.QVBoxLayout(waveforms)
+        waveforms_layout.setContentsMargins(0, 0, 0, 0)
+        waveforms_layout.setSpacing(0)
+        waveforms_layout.addWidget(self.graphics)
+        waveforms_layout.addWidget(self.time_bar)
         self.center_tabs = QtWidgets.QTabWidget()
-        self.center_tabs.addTab(self.graphics, "")
+        self.center_tabs.addTab(waveforms, "")
         self._bind(lambda text: self.center_tabs.setTabText(0, text), "Waveforms")
         self.panel = ScopePanel(self)
         self.panel.message.connect(self._log)
@@ -575,13 +586,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         view = self.menuBar().addMenu("")
         self._bind(view.setTitle, "View")
-        results = view.addAction("")
-        self._bind(results.setText, "Waveforms")
-        results.triggered.connect(lambda: self.center_tabs.setCurrentIndex(0))
-        screen = view.addAction("")
-        self._bind(screen.setText, "Oscilloscope")
-        screen.triggered.connect(lambda: self.center_tabs.setCurrentIndex(SCOPE_TAB))
-        view.addSeparator()
         view.addAction(self.sidebar_dock.toggleViewAction())
         view.addAction(self.results_dock.toggleViewAction())
         view.addSeparator()
@@ -1683,6 +1687,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.time_axis_plot = None
         self.graphics.addLabel(tr("Choose channels in the Scope settings on the toolbar or add a decoder."), color=self.theme.canvas_text)
         self.graphics.ci.setGeometry(self.graphics.range)
+        self._update_time_bar()
 
     def _display_mode_changed(self):
         self.settings.setValue("display_mode", self.display_mode.currentData())
@@ -2069,6 +2074,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_text(self, *_args):
         self.cursor_overlay.refresh()
         self.mark_overlay.refresh()
+        self._update_time_bar()
         if self.master is None:
             return
         data_font = QtGui.QFont(self.font())
@@ -2172,6 +2178,29 @@ class MainWindow(QtWidgets.QMainWindow):
     def zoom_fit(self):
         if self.master is not None:
             self.master.setXRange(*self.full_range, padding=0)
+
+    def _update_time_bar(self):
+        """The bar shows where the view is in the capture. With all of it in view there is nowhere to move."""
+        low, high = self.full_range
+        first, last = self.master.viewRange()[0] if self.master is not None else self.full_range
+        whole = max(high - low, 1e-30)
+        page = min(TIME_BAR_STEPS, max(1, round((last - first) / whole * TIME_BAR_STEPS)))
+        with QtCore.QSignalBlocker(self.time_bar):
+            self.time_bar.setPageStep(page)
+            self.time_bar.setSingleStep(max(1, round(page * TIME_BAR_ARROW_STEP)))
+            self.time_bar.setRange(0, TIME_BAR_STEPS - page)
+            self.time_bar.setValue(round((first - low) / whole * TIME_BAR_STEPS))
+        self.time_bar.setEnabled(page < TIME_BAR_STEPS)
+
+    def _scroll_time(self, value):
+        """Moves the view and keeps its width."""
+        if self.master is None:
+            return
+        low, high = self.full_range
+        first, last = self.master.viewRange()[0]
+        span = last - first
+        start = min(low + value / TIME_BAR_STEPS * (high - low), high - span)
+        self.master.setXRange(start, start + span, padding=0)
 
     # ---- cursors --------------------------------------------------------
     def _cursors_toggled(self, enabled):

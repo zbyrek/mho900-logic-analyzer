@@ -16,7 +16,7 @@ from mhodecode import generator, i18n, siggen  # noqa: E402
 from mhodecode.decoders import SIGROK, SIGROK_ROOTS  # noqa: E402
 from mhodecode import abort, rigol_files, trigger  # noqa: E402
 from mhodecode.decoder_panel import DECODER_MIME  # noqa: E402
-from mhodecode.gui import MainWindow  # noqa: E402
+from mhodecode.gui import TIME_BAR_STEPS, MainWindow  # noqa: E402
 from mhodecode import trigger  # noqa: E402
 from mhodecode.channel_controls import DIGITAL, ChannelDialog, ScopeSettings  # noqa: E402
 from mhodecode.scope import CapturePlan, Scope, ScopeError, digital_channel  # noqa: E402
@@ -695,6 +695,61 @@ def test_zoom_buttons(window):
     assert window.master.viewRange()[0] == pytest.approx([low, high])
     window.zoom_out_button.click()
     assert window.master.viewRange()[0] == pytest.approx([low, high])  # the capture's ends are the limit
+
+
+def test_the_time_bar_moves_the_view_and_keeps_its_width(window):
+    decoded_uart(window)
+    bar = window.time_bar
+    low, high = window.full_range
+    assert not bar.isEnabled() and bar.value() == 0  # all of the capture is in view
+    span = (high - low) / 10
+    window.master.setXRange(low, low + span, padding=0)
+    assert bar.isEnabled() and bar.value() == 0 and bar.pageStep() == pytest.approx(TIME_BAR_STEPS / 10, rel=1e-6)
+    bar.setValue(bar.maximum())
+    assert window.master.viewRange()[0] == pytest.approx([high - span, high])
+    bar.setValue(bar.maximum() // 2)
+    first, last = window.master.viewRange()[0]
+    assert last - first == pytest.approx(span) and (first + last) / 2 == pytest.approx((low + high) / 2, rel=1e-6)
+    window.zoom_fit_button.click()
+    assert window.master.viewRange()[0] == pytest.approx([low, high]) and not bar.isEnabled()
+
+
+def test_the_time_bar_follows_a_view_moved_elsewhere(window):
+    decoded_uart(window)
+    low, high = window.full_range
+    span = (high - low) / 4
+    window.master.setXRange(high - span, high, padding=0)
+    assert window.time_bar.value() == window.time_bar.maximum()
+    window.master.setXRange(low, low + span, padding=0)
+    assert window.time_bar.value() == 0
+
+
+def test_the_time_bar_reaches_a_tiny_view_of_a_deep_memory(window):
+    window.scope_settings.choose((1,))
+    window._show_new_waves({1: Waveform(1, np.zeros(50_000_000, dtype=np.uint8), 1e-8, 0.0, digital=True)})
+    window.master.setXRange(0.25, 0.25 + 1e-6, padding=0)
+    bar = window.time_bar
+    assert bar.isEnabled() and bar.value() == pytest.approx(0.25 / window.full_range[1] * TIME_BAR_STEPS, abs=2)
+    bar.setValue(bar.value() + bar.pageStep())
+    first, last = window.master.viewRange()[0]
+    assert first == pytest.approx(0.25 + 1e-6, abs=1e-8) and last - first == pytest.approx(1e-6, abs=1e-8)
+
+
+def test_the_time_bar_has_nothing_to_move_with_no_data(window):
+    window.scope_settings.choose((1,))
+    window._plot()
+    assert not window.time_bar.isEnabled()
+    window.scope_settings.choose(())
+    window._plot()
+    assert window.master is None and not window.time_bar.isEnabled()
+
+
+def test_the_view_menu_has_no_entries_for_the_tabs(window):
+    menu = next(action.menu() for action in window.menuBar().actions() if action.text() == "View")
+    texts = [action.text() for action in menu.actions()]
+    assert "Waveforms" not in texts and "Oscilloscope" not in texts and "Theme" in texts
+    assert not menu.actions()[0].isSeparator()
+    assert [window.center_tabs.tabText(index) for index in range(2)] == ["Waveforms", "Oscilloscope"]
 
 
 def test_cursors_measure_and_follow_a_new_plot(window):

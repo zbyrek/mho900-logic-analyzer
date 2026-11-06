@@ -110,7 +110,7 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   łączyć we wzorzec z jednym zboczem narastającym lub opadającym, a dowolne zbocze działa tylko samo. Akwizycja z warunkiem czeka na
   wyzwolenie bez limitu. Próg ustawiony na kanale działa w widoku Logika, w dekoderach z progiem automatycznym i w wyzwalaniu.
   Bez progu poziom wyzwalania to środek sygnału z ostatniego odczytu, a bez odczytu zostaje poziom z oscyloskopu.
-- **Zakładka Przebiegi:** kółko myszy powiększa, a przeciąganie przesuwa w czasie. Widok **Logika** pokazuje
+- **Zakładka Przebiegi:** kółko myszy powiększa, a przeciąganie lub suwak pod przebiegami przesuwa w czasie. Widok **Logika** pokazuje
   stany po progu, a **Analog** napięcia. Wiersze przebiegów są niskie, a miejsce dostają wiersze dekodera. Skala pionowa
   w widoku **Analog** jest dopasowywana raz, do całego odczytu, i nie zmienia się przy zmianie skali czasu. Kliknięcie osi
   napięcia pozwala wpisać górę i dół zakresu albo wrócić do skali automatycznej, a wpisany zakres zostaje też przy kolejnych
@@ -146,7 +146,7 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   Na przebiegach najpierw są kanały, a pod nimi pasy kolejnych dekoderów. Etykiety pasów drugiego i kolejnych dekoderów
   mają jego numer (`#2`).
 - **Wyniki na dole:** wyszukiwarka, filtr wiersza dekodera i **Tylko błędy**.
-- **Menu:** **Plik** (otwieranie i zapis przebiegów, eksport CSV), **Widok** (ekran oscyloskopu, panele,
+- **Menu:** **Plik** (otwieranie i zapis przebiegów, eksport CSV), **Widok** (panele,
   **Motyw** jasny lub ciemny), **Zaawansowane** (okno odbioru i porównania danych, **Log** w osobnym oknie, Ctrl+L, i log szczegółowy).
 
 Ostatni komunikat widać na pasku stanu, a błąd jest tam czerwony. Kliknięcie otwiera log.

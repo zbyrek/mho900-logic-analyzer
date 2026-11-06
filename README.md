@@ -115,7 +115,7 @@ Settings open in a separate window rather than a popup.
   condition waits for the trigger with no limit. A threshold set on a channel works in the Logic view, in decoders with an automatic
   threshold and in the trigger. With no threshold, the trigger level is the middle of the signal from the last read, and with no read
   the level on the scope stays.
-- **Waveforms tab:** the mouse wheel zooms and dragging moves along the time axis. The **Logic** view shows states after the threshold,
+- **Waveforms tab:** the mouse wheel zooms, and dragging or the scroll bar under the waveforms moves along the time axis. The **Logic** view shows states after the threshold,
   and **Analog** shows voltages. Waveform rows are low, and decoder rows get the room. The vertical scale in the **Analog** view is fitted
   once, to the whole read, and does not change when the time scale does. Clicking the voltage axis lets you enter the top and bottom of
   the range or go back to the automatic scale, and an entered range stays for further reads. Cursors, as in PulseView, have flags A
@@ -149,7 +149,7 @@ Settings open in a separate window rather than a popup.
   The waveforms show channels first, with the lanes of further decoders under them. The lane labels of the second and later decoders
   have its number (`#2`).
 - **Results at the bottom:** search, a filter by decoder row, and **Errors only**.
-- **Menu:** **File** (opening and saving waveforms, CSV export), **View** (scope screen, panels, light or dark **Theme**), **Advanced**
+- **Menu:** **File** (opening and saving waveforms, CSV export), **View** (panels, light or dark **Theme**), **Advanced**
   (the window for receiving and comparing data, the **Log** in a separate window, Ctrl+L, and the detailed log).
 
 The last message shows on the status bar, in red if it is an error. Clicking it opens the log.

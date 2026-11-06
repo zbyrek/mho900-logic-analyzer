@@ -299,6 +299,7 @@ POLISH: dict[str, str] = {
     "Zoom in (mouse wheel)": "Powiększ (kółko myszy)",
     "Zoom out (mouse wheel)": "Pomniejsz (kółko myszy)",
     "Show the whole capture": "Pokaż cały zapis",
+    "Moves the view along the time axis.": "Przesuwa widok wzdłuż osi czasu.",
     "Fit": "Całość",
     "Logic": "Logika",
     "Analog": "Analog",
