@@ -18,7 +18,8 @@ If the program ends with an error, the console window stays open and shows it.
 
 1. Enter the IP address and click **Connect**.
 2. Drag a decoder from the tree and assign its signals to channels CH1–CH4 or D0–D15. Further decoders are added the same
-   way, including the same decoder several times on other channels with other settings.
+   way, including the same decoder several times on other channels with other settings. A new decoder takes only the channels in use:
+   signals beyond them stay empty until you assign them, and no further channel is turned on.
 3. Click the label of a decoder lane or choose **Decoder settings** from the right-click menu: a window opens where you set
    the channels and the protocol parameters. Decoding starts by itself after every change of a waveform, channel or option,
    so there is no decode button. A new decoder's signals start on the channels in use: those that showed a signal in the last data, then those

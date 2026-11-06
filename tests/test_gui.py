@@ -525,6 +525,7 @@ def test_decoders_add_up_one_under_another(window):
 
 
 def test_the_same_decoder_twice_has_its_own_channels_and_options(window):
+    window.scope_settings.choose({1, 2})
     first = window.new_decoder("UART")
     second = window.new_decoder("UART")
     assert first.caption == "UART" and second.caption == "UART #2"
@@ -563,7 +564,22 @@ def test_a_further_decoder_takes_a_free_channel_before_an_active_one_in_use(wind
     first = window.new_decoder("UART")
     assert first.signal_rows[0].channel.currentData() == 3
     second = window.new_decoder("UART")
-    assert second.signal_rows[0].channel.currentData() != 3
+    assert second.signal_rows[0].channel.currentData() == 3  # the only one active: no further channel is added
+    window.remove_all_decoders()
+    window.scope_settings.choose({3, 4})
+    window.new_decoder("UART")
+    assert window.new_decoder("UART").signal_rows[0].channel.currentData() == 4
+
+
+def test_required_signals_beyond_the_active_channels_stay_empty(window):
+    window.remove_all_decoders()
+    window.scope_settings.choose({3})
+    window.waves = {3: Waveform(3, np.tile(np.float32([0, 3.3]), 500), 1e-6, 0.0)}
+    card = window.select_sigrok("i2c")
+    assert [row.channel.currentData() for row in card.signal_rows] == [3, None]
+    assert window.scope_settings.selected() == {3}
+    run_decode(window)
+    assert "Assign channels" in card.problem
 
 
 def test_drop_on_a_decoder_stacks_there_when_it_fits(window):
@@ -1530,10 +1546,11 @@ def test_signal_rows_offer_digital_channels_and_hide_the_threshold(window):
     assert not row.auto.isHidden()
 
 
-def test_wide_bus_defaults_run_on_to_digital_channels(window):
+def test_wide_bus_runs_on_to_digital_channels_only_if_they_are_chosen(window):
+    window.scope_settings.choose({1, 2, 3, 4, DIGITAL[0]})
     use(window, SIGROK_ROOTS["lpc"].name)
     required = [row.channel.currentText() for row in active(window).signal_rows if row.spec.required]
-    assert required[:6] == ["CH1", "CH2", "CH3", "CH4", "D0", "D1"]
+    assert required == ["CH1", "CH2", "CH3", "CH4", "D0", "—"]
 
 
 def test_digital_channel_decodes_and_is_drawn(window):
@@ -2127,7 +2144,9 @@ def test_a_channel_of_a_decoder_is_read_and_cannot_be_unticked(window):
     picker = window.scope_settings
     picker.choose(())
     card = window.new_decoder("UART")
-    channel = next(iter(card.mapping().values()))
+    assert card.mapping() == {}  # nothing is chosen, so it takes nothing
+    channel = 2
+    card.signal_rows[0].channel.setCurrentIndex(card.signal_rows[0].channel.findData(channel))
     assert channel in window._used_channels() and channel in picker.selected()
     assert picker.boxes[channel].isChecked() and not picker.boxes[channel].isEnabled()
     window.remove_decoder(card)

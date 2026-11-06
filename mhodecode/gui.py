@@ -785,18 +785,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _channels_for_new_decoder(self):
         """Channels in use on the scope first, those that showed a signal before all others. A further decoder is there for
-        another bus, so it takes channels nothing uses yet before any active one that is taken."""
+        another bus, so it takes channels nothing uses yet before any active one that is taken. Only active channels are
+        offered: a decoder with more signals than that leaves the rest empty instead of turning on another channel."""
         used = {channel for card in self.cards for channel in card.mapping().values()}
         on_scope = self.panel.channels_on()
         active = on_scope | self.scope_settings.selected()
 
         def rank(channel):
-            if channel not in active:
-                return 3
             if channel in self.waves:
                 return 0 if self._has_signal(channel) else 3
             return 1 if channel in on_scope else 2
-        return sorted(all_channels(), key=lambda channel: (channel in used, rank(channel)))  # stable: by number within a rank
+        offered = [channel for channel in all_channels() if channel in active]
+        return sorted(offered, key=lambda channel: (channel in used, rank(channel)))  # stable: by number within a rank
 
     def new_decoder(self, name):
         card = DecoderCard(DECODERS[name], self.next_card_uid, self._channels_for_new_decoder())

@@ -18,7 +18,8 @@ Jeśli program skończy się błędem, okno konsoli zostaje otwarte z jego treś
 
 1. Wpisz adres IP i kliknij **Połącz**.
 2. Przeciągnij dekoder z drzewa i przypisz sygnały do kanałów CH1–CH4 lub D0–D15. Kolejne dekodery dodaje się
-   tak samo, także ten sam dekoder kilka razy na innych kanałach i z innymi ustawieniami.
+   tak samo, także ten sam dekoder kilka razy na innych kanałach i z innymi ustawieniami. Nowy dekoder bierze tylko kanały w użyciu:
+   sygnały ponad ich liczbę zostają puste, dopóki ich nie przypiszesz, i żaden kanał nie jest dokładany.
 3. Kliknij etykietę pasu dekodera albo wybierz **Ustawienia dekodera** z menu prawego klawisza: otworzy się okno, w którym ustawisz kanały
    i parametry protokołu. Dekodowanie rusza samo po każdej zmianie przebiegu, kanału lub opcji, więc nie ma przycisku dekodowania.
    Sygnały nowego dekodera zaczynają od kanałów w użyciu: tych, na których był sygnał w ostatnich danych, potem włączonych na oscyloskopie, potem
