@@ -13,15 +13,19 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph.util.garbage_collector import GarbageCollector
 
 from . import __version__, abort, generator, rigol_files, segments, trigger
-from .decoder_panel import (SORT_CATEGORY, SORT_PARENT, DecoderCard, DecoderDropTarget, DecoderTree, DecoderWindow, all_channels, clear_layout, compact,
-                            dragged_decoder, param_widget, set_widget_value, widget_value)
+from .afg_file_window import AfgFileWindow
+from .decoder_panel import (SORT_CATEGORY, SORT_PARENT, DecoderCard, DecoderDropTarget, DecoderTree, DecoderWindow, all_channels, compact,
+                            dragged_decoder, set_widget_value)
 from .decoders import DECODERS, SIGROK, SIGROK_ROOTS
 from .decoders.base import DecodeResult
 from .i18n import LANGUAGES, language, set_language, tr
+from .packet_fit import fit_time_to_packet
 from .channel_controls import ChannelDialog, ScopeSettings
 from .cursors import CursorOverlay, CursorStrip, CursorView, LineMark, MarkOverlay, MarkView, span_text
-from .scope import DEFAULT_FORMAT, CapturePlan, Scope, ScopeError, Waveform, channel_name, digital_channel, is_digital
+from .scope import DEFAULT_FORMAT, CapturePlan, Scope, ScopeError, Waveform, channel_name, format_si, is_digital
 from .scope_panel import ScopePanel
+from .scope_status import ScopeStatusBar
+from .signal_form import DATA_FIELD_TIP, DATA_FORMATS, SignalForm
 from .signal import Thresholds, auto_thresholds, digitize, manual_thresholds
 from .srd_loader import base_chain
 from .theme import DEFAULT_THEME, THEMES, apply_palette, window_style
@@ -68,15 +72,13 @@ MIN_ZOOM_SAMPLES = 8
 ZOOM_STEP = 2.0
 FIRST_CURSOR, SECOND_CURSOR = 1 / 3, 2 / 3
 HOVERED_CURSOR_WIDTH = 4
-DATA_FIELD_TIP = "Hex: 0x48 0x65 or 48 65. ASCII: \"Hello\" or Hello."
 LOG_LINES = 500
 VERBOSE_LOG_LINES = 20000
 SCOPE_TAB = 1
 CAPTURE_DIVISIONS = 10
 SINGLE_MARGIN_S = 10.0  # added to the capture length when waiting for a single acquisition
-DATA_FORMATS = (("Hex", "hex"), ("ASCII", "ascii"))
-LOADS = (("High impedance (High-Z)", "OMEG"), ("50 Ω load", "FIFTy"))
 SETTINGS = ("MHO900Decoder", "MHO900Decoder")
+WINDOW_LAYOUT_VERSION = 1  # raised when a saved layout would put the bars in the wrong place; an older one is then ignored
 
 
 class Worker(QtCore.QThread):
@@ -222,8 +224,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.next_card_uid = 1
         self.decoding = False
         self.decode_pending = False
-        self.gen_param_widgets: dict[str, QtWidgets.QWidget] = {}
-        self.gen_line_combos: dict[str, QtWidgets.QComboBox] = {}
         self.lanes: dict[str, pg.PlotItem] = {}
         self.lane_text: dict[str, list] = {}
         self.lane_items: dict[str, dict[bool, list]] = {}
@@ -253,7 +253,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.decode_timer.setInterval(DECODE_DELAY_MS)
         self.decode_timer.timeout.connect(self._decode)
         self._build()
-        self._generator_protocol_changed()
         self._apply_language()
         self.read_format.setCurrentIndex(self.read_format.findData(self.settings.value("read_format", DEFAULT_FORMAT)))
         self.read_format.currentIndexChanged.connect(
@@ -263,7 +262,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         if state:
-            self.restoreState(state)
+            self.restoreState(state, WINDOW_LAYOUT_VERSION)
 
     # ---- translation helpers --------------------------------------------
     def _bind(self, setter, text):
@@ -302,8 +301,6 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._show_placeholder()
         self._show_cursor_readout()
-        gen_params = {key: widget_value(widget) for key, widget in self.gen_param_widgets.items()}
-        gen_lines = {key: combo.currentData() for key, combo in self.gen_line_combos.items()}
         self.decoder_tree.rebuild(self._active_top())
         self._fill_decoder_sort()
         for card in self.cards:
@@ -311,16 +308,8 @@ class MainWindow(QtWidgets.QMainWindow):
             card.config_window.retranslate()
             self._connect_card_drops(card)
         self._renumber_cards()
-        levels = self._current_levels()
-        self._rebuild_generator_form()
-        for key, value in gen_params.items():
-            set_widget_value(self.gen_param_widgets[key], value)
-        self._rebuild_generator_lines()
-        for key, value in gen_lines.items():
-            if key in self.gen_line_combos:
-                combo = self.gen_line_combos[key]
-                combo.setCurrentIndex(max(0, combo.findData(value)))
-        self._restore_levels(levels)
+        self.gen_form.retranslate()
+        self.afg_file_window.form.retranslate()
         self._show_status()
 
     # ---- layout ---------------------------------------------------------
@@ -343,8 +332,12 @@ class MainWindow(QtWidgets.QMainWindow):
         waveforms_layout = QtWidgets.QVBoxLayout(waveforms)
         waveforms_layout.setContentsMargins(0, 0, 0, 0)
         waveforms_layout.setSpacing(0)
+        self.analyzer_bar = QtWidgets.QHBoxLayout()
+        self.analyzer_bar.setContentsMargins(2, 2, 2, 2)
+        waveforms_layout.addLayout(self.analyzer_bar)
         waveforms_layout.addWidget(self.graphics)
         waveforms_layout.addWidget(self.time_bar)
+        self.waveforms_page = waveforms
         self.center_tabs = QtWidgets.QTabWidget()
         self.center_tabs.addTab(waveforms, "")
         self._bind(lambda text: self.center_tabs.setTabText(0, text), "Waveforms")
@@ -357,7 +350,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(self.center_tabs)
 
         self._build_log_window()
-        self._build_toolbars()
+        self._build_connection_bar()
+        self._fill_analyzer_bar(self.analyzer_bar)
         # The decoder forms are tall, so their panel runs the whole height of the window.
         self.setCorner(QtCore.Qt.BottomRightCorner, QtCore.Qt.RightDockWidgetArea)
         self._build_sidebar()
@@ -368,6 +362,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_menu()
         self._build_lane_menu()
         self._show_status()
+        self._refresh_buttons()
 
     def _build_lane_menu(self):
         """Right click on a decoder's trace. Shown with popup(), as pyqtgraph does with its own menus:
@@ -402,8 +397,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bind(bar.setWindowTitle, title)
         return bar
 
-    def _build_toolbars(self):
-        style = self.style()
+    def _build_connection_bar(self):
+        """What holds for the whole window. What belongs to one tab is on that tab."""
         device = self._toolbar("device_bar", "Connection")
         self.host = QtWidgets.QLineEdit(self.settings.value("host", DEFAULT_HOST))
         self.host.setMaximumWidth(150)
@@ -415,8 +410,34 @@ class MainWindow(QtWidgets.QMainWindow):
         device.addWidget(self.host)
         device.addWidget(self.connect_button)
         device.addWidget(self.connection_state)
-        device.addSeparator()
+        self.addToolBarBreak()
+        self.scope_status = ScopeStatusBar()
+        self._bind(self.scope_status.setWindowTitle, "Scope status")
+        self._bind(self.scope_status.labels["holdoff"].setToolTip, "After a trigger the scope does not trigger again for this long, so it skips the signal in that time. Set on the Oscilloscope tab.")
+        self.addToolBar(QtCore.Qt.TopToolBarArea, self.scope_status)
+        self.panel.status_changed.connect(lambda: self.scope_status.show_status(self.panel.status()))
+        self.scope_status.show_status(self.panel.status())
 
+    def abort_control(self):
+        """A job can be running whichever tab is in sight, so each tab with a job of its own has this button."""
+        button = QtWidgets.QPushButton()
+        button.setObjectName("abort")
+        button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaStop))
+        button.setShortcut("Esc")  # only the button on the tab in sight takes it
+        self._bind(button.setText, "Abort")
+        self._bind(button.setToolTip, "Stops the running operation and turns Repeat off (Esc).")
+        button.setEnabled(False)
+        button.clicked.connect(self._abort)
+        return button
+
+    def _bar_separator(self):
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.VLine)
+        line.setFrameShadow(QtWidgets.QFrame.Sunken)
+        return line
+
+    def _fill_analyzer_bar(self, bar):
+        style = self.style()
         self.scope_settings = ScopeSettings(self)
         self.read_format, self.force_dc, self.wait_trigger = (self.scope_settings.read_format, self.scope_settings.force_dc,
                                                               self.scope_settings.wait_trigger)
@@ -424,55 +445,46 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scope_settings.thresholds_changed.connect(self._schedule_decode)
         self.scope_settings.hide_requested.connect(self._hide_unused)
         self.scope_settings.message.connect(self._log)
-        device.addWidget(self.scope_settings)
+        bar.addWidget(self.scope_settings)
         self.single_button = self._busy_button("Run", self._acquire, needs_scope=True)
         self.single_button.setObjectName("primary")
         self.single_button.setIcon(style.standardIcon(QtWidgets.QStyle.SP_MediaPlay))
         self.single_button.setShortcut("F5")
-        self._bind(self.single_button.setToolTip, "Sets the scope up from the Scope settings on the toolbar, runs one acquisition, reads and decodes (F5).")
+        self._bind(self.single_button.setToolTip, "Sets the scope up from Scope settings, runs one acquisition, reads and decodes (F5).")
         self.read_button = self._busy_button("Read memory", self._read_memory, needs_scope=True)
         self._bind(self.read_button.setToolTip, "Stops the scope and decodes what is in its memory, without changing its settings.")
-        self.autoscale_button = self._busy_button("Autoscale", self._autoscale, needs_scope=True)
-        self._bind(self.autoscale_button.setToolTip, "Fits the ranges of the channels in use and sets the trigger.")
         self.repeat_button = QtWidgets.QCheckBox()
         self._bind(self.repeat_button.setText, "Repeat")
         self._bind(self.repeat_button.setToolTip, "After each decoding another acquisition, until turned off or aborted. New samples go further along the time axis, behind a separator, and decoders read each acquisition on its own.")
-        self.abort_button = QtWidgets.QPushButton()
-        self.abort_button.setObjectName("abort")
-        self.abort_button.setIcon(style.standardIcon(QtWidgets.QStyle.SP_MediaStop))
-        self.abort_button.setShortcut("Esc")
-        self._bind(self.abort_button.setText, "Abort")
-        self._bind(self.abort_button.setToolTip, "Stops the running operation and turns Repeat off (Esc).")
-        self.abort_button.setEnabled(False)
-        self.abort_button.clicked.connect(self._abort)
+        self.abort_button = self.abort_control()
         self.run_place = QtWidgets.QStackedWidget()  # Run gives way to Abort while something can be stopped
         self.run_place.addWidget(self.single_button)
         self.run_place.addWidget(self.abort_button)
-        # A stacked widget takes all the free room of a toolbar otherwise.
+        # A stacked widget takes all the free room of its row otherwise.
         self.run_place.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
-        device.addWidget(self.run_place)
-        device.addWidget(self.repeat_button)
-        device.addSeparator()
-        device.addWidget(self.read_button)
-        device.addWidget(self.autoscale_button)
-        device.addSeparator()
+        bar.addWidget(self.run_place)
+        bar.addWidget(self.repeat_button)
+        bar.addWidget(self._bar_separator())
+        bar.addWidget(self.read_button)
+        bar.addWidget(self._bar_separator())
 
-        self.zoom_in_button = self._view_button(device, "+", self._zoom_in, "Zoom in (mouse wheel)", "Ctrl+=")
-        self.zoom_out_button = self._view_button(device, "−", self._zoom_out, "Zoom out (mouse wheel)", "Ctrl+-")
-        self.zoom_fit_button = self._view_button(device, "", self.zoom_fit, "Show the whole capture", "Ctrl+0")
+        self.zoom_in_button = self._view_button(bar, "+", self._zoom_in, "Zoom in (mouse wheel)", "Ctrl+=")
+        self.zoom_out_button = self._view_button(bar, "−", self._zoom_out, "Zoom out (mouse wheel)", "Ctrl+-")
+        self.zoom_fit_button = self._view_button(bar, "", self.zoom_fit, "Show the whole capture", "Ctrl+0")
         self._bind(self.zoom_fit_button.setText, "Fit")
         self.display_mode = QtWidgets.QComboBox()
         self._fill_combo(self.display_mode, DISPLAY_MODES)
         self.display_mode.setCurrentIndex(max(0, self.display_mode.findData(self.settings.value("display_mode", "logic"))))
         self.display_mode.currentIndexChanged.connect(self._display_mode_changed)
         self._bind(self.display_mode.setToolTip, "Logic: states after the threshold, as in a logic analyzer. Analog: the scope's voltages.")
-        device.addWidget(self.display_mode)
+        bar.addWidget(self.display_mode)
         self.cursors_button = QtWidgets.QPushButton()
         self._bind(self.cursors_button.setText, "Cursors")
         self._bind(self.cursors_button.setToolTip, "Two cursors: the arrow between them gives the time and frequency. Drag the lines or the A and B flags.")
         self.cursors_button.setCheckable(True)
         self.cursors_button.toggled.connect(self._cursors_toggled)
-        device.addWidget(self.cursors_button)
+        bar.addWidget(self.cursors_button)
+        bar.addStretch(1)
 
     def _view_button(self, bar, text, slot, tip, shortcut):
         button = QtWidgets.QPushButton(text)
@@ -607,6 +619,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.test_action = advanced.addAction("")
         self._bind(self.test_action.setText, "Receiving and comparing data")
         self.test_action.triggered.connect(self.show_test_window)
+        self.afg_files_action = advanced.addAction("")
+        self._bind(self.afg_files_action.setText, "AFG waveform files")
+        self.afg_files_action.triggered.connect(self.show_afg_file_window)
         advanced.addSeparator()
         log = advanced.addAction("")
         self._bind(log.setText, "Log")
@@ -634,6 +649,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bind(about.setText, "About and licenses")
         about.triggered.connect(self._show_about)
 
+    def show_afg_file_window(self):
+        self.afg_file_window.show()
+        self.afg_file_window.raise_()
+        self.afg_file_window.activateWindow()
+
     def show_test_window(self):
         self.test_window.show()
         self.test_window.raise_()
@@ -659,6 +679,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setStyleSheet(window_style(self.theme))
         self.model.set_colors(self.theme.error_text, self.theme.control_text)
         self._style_comparison()
+        self.scope_status.set_notice_color(self.theme.warning_text)
         self._show_status()
         self._style_last_message()
         self._plot()
@@ -760,11 +781,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self._show_fitting()
         return card
 
-    def new_decoder(self, name):
-        # A further decoder takes channels nothing uses yet, since it is there for another bus.
+    def _channels_for_new_decoder(self):
+        """Channels in use on the scope first, those that showed a signal before all others. A further decoder is there for
+        another bus, so it takes channels nothing uses yet before any active one that is taken."""
         used = {channel for card in self.cards for channel in card.mapping().values()}
-        order = [channel for channel in all_channels() if channel not in used] + [channel for channel in all_channels() if channel in used]
-        card = DecoderCard(DECODERS[name], self.next_card_uid, order)
+        on_scope = self.panel.channels_on()
+        active = on_scope | self.scope_settings.selected()
+
+        def rank(channel):
+            if channel not in active:
+                return 3
+            if channel in self.waves:
+                return 0 if self._has_signal(channel) else 3
+            return 1 if channel in on_scope else 2
+        return sorted(all_channels(), key=lambda channel: (channel in used, rank(channel)))  # stable: by number within a rank
+
+    def new_decoder(self, name):
+        card = DecoderCard(DECODERS[name], self.next_card_uid, self._channels_for_new_decoder())
         self.next_card_uid += 1
         card.changed.connect(self._card_changed)
         card.visibility_changed.connect(self._card_visibility_changed)
@@ -840,47 +873,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         signal = self._group("Generate a signal for the device")
         signal_layout = QtWidgets.QVBoxLayout(signal)
-        form = QtWidgets.QFormLayout()
-        self.gen_protocol = QtWidgets.QComboBox()
-        self.gen_protocol.addItems(list(generator.PROTOCOLS))
-        self.gen_protocol.currentIndexChanged.connect(self._generator_protocol_changed)
-        self.gen_data_format = QtWidgets.QComboBox()
-        self._fill_combo(self.gen_data_format, DATA_FORMATS)
-        self.gen_data_format.currentIndexChanged.connect(self._gen_format_changed)
-        self.gen_data = QtWidgets.QLineEdit("0x48 0x65 0x6C 0x6C 0x6F")
-        self._bind(self.gen_data.setToolTip, DATA_FIELD_TIP)
-        self._gen_data_format_shown = "hex"
-        form.addRow(self._label("Protocol"), self.gen_protocol)
-        form.addRow(self._label("Data format"), self.gen_data_format)
-        form.addRow(self._label("Data"), self.gen_data)
-        signal_layout.addLayout(form)
-        self.gen_form_holder = QtWidgets.QVBoxLayout()
-        signal_layout.addLayout(self.gen_form_holder)
-        self.gen_line_grid = QtWidgets.QGridLayout()
-        self.gen_line_grid.setColumnStretch(1, 1)
-        signal_layout.addLayout(self.gen_line_grid)
-
-        levels = QtWidgets.QGridLayout()
-        self.gen_levels = {}
-        levels.addWidget(self._label("Low level"), 0, 1)
-        levels.addWidget(self._label("High level"), 0, 2)
-        for row, afg in enumerate(generator.OUTPUTS, start=1):
-            levels.addWidget(QtWidgets.QLabel(f"AFG{afg}"), row, 0)
-            low, high = QtWidgets.QDoubleSpinBox(), QtWidgets.QDoubleSpinBox()
-            for box in (low, high):
-                box.setRange(-10, 10)
-                box.setDecimals(3)
-                box.setSingleStep(0.1)
-                box.setSuffix(" V")
-            levels.addWidget(low, row, 1)
-            levels.addWidget(high, row, 2)
-            self.gen_levels[afg] = (low, high)
-        signal_layout.addLayout(levels)
-        load_form = QtWidgets.QFormLayout()
-        self.gen_load = QtWidgets.QComboBox()
-        self._fill_combo(self.gen_load, LOADS)
-        load_form.addRow(self._label("Output load"), self.gen_load)
-        signal_layout.addLayout(load_form)
+        self.gen_form = SignalForm(self)
+        signal_layout.addWidget(self.gen_form)
         note = self._label("The output repeats the record in a loop while it is on. Check the voltage levels before connecting a device.")
         note.setWordWrap(True)
         signal_layout.addWidget(note)
@@ -895,6 +889,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(signal)
         layout.addStretch(1)
         self._build_test_window()
+        self.afg_file_window = AfgFileWindow(self)
         return page
 
     def _build_test_window(self):
@@ -904,12 +899,12 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(self.test_window)
         receive = self._group("Receive the response")
         receive_layout = QtWidgets.QVBoxLayout(receive)
-        info = self._label("Receiving uses the decoder's channels and the Scope settings on the toolbar.")
+        info = self._label("Receiving uses the decoder's channels and the Scope settings on the Waveforms tab.")
         info.setWordWrap(True)
         receive_layout.addWidget(info)
         self.match_button = QtWidgets.QPushButton()
         self._bind(self.match_button.setText, "Set the decoder and time base from the generator")
-        self._bind(self.match_button.setToolTip, "Sets the channel of each line by the number of its AFG output (AFG1 on CH1).")
+        self._bind(self.match_button.setToolTip, "Copies the protocol parameters and picks a time base. The channels and the trigger source stay as they are.")
         self.match_button.clicked.connect(self._match_decoder)
         receive_layout.addWidget(self.match_button)
         self.receive_button = self._busy_button("Receive", self._acquire, needs_scope=True)
@@ -961,8 +956,10 @@ class MainWindow(QtWidgets.QMainWindow):
             needs_scope = button.property("needs_scope")
             button.setEnabled(not running and (not needs_scope or self.scope is not None))
         self.connect_button.setEnabled(not running)
-        self.abort_button.setEnabled(running and self.abortable)
-        self.run_place.setCurrentWidget(self.abort_button if running and self.abortable else self.single_button)
+        stoppable = running and self.abortable
+        self.abort_button.setEnabled(stoppable)
+        self.run_place.setCurrentWidget(self.abort_button if stoppable else self.single_button)
+        self.panel.show_abort(stoppable)
         self.connect_button.setText(tr("Disconnect") if self.scope else tr("Connect"))
 
     abortable = False
@@ -975,79 +972,6 @@ class MainWindow(QtWidgets.QMainWindow):
         color = self.theme.ok_text if self.scope else self.theme.error_text
         self.connection_state.setText(f"● {tr('Connected') if self.scope else tr('Not connected')}")
         self.connection_state.setStyleSheet(f"color: {color};")
-
-    # ---- generator forms ------------------------------------------------
-    def _generator_protocol_changed(self):
-        self._rebuild_generator_form()
-        self._rebuild_generator_lines()
-
-    def _rebuild_generator_form(self):
-        clear_layout(self.gen_form_holder)
-        self.gen_param_widgets = {}
-        holder = QtWidgets.QWidget()
-        form = QtWidgets.QFormLayout(holder)
-        form.setContentsMargins(0, 0, 0, 0)
-        for param in generator.PROTOCOL_PARAMS[self.gen_protocol.currentText()]:
-            widget = param_widget(param)
-            self.gen_param_widgets[param.key] = widget
-            form.addRow(tr(param.label), widget)
-            if param.key == "differential":
-                widget.currentIndexChanged.connect(self._rebuild_generator_lines)
-        self.gen_form_holder.addWidget(holder)
-
-    def _gen_params(self) -> dict:
-        return {key: widget_value(widget) for key, widget in self.gen_param_widgets.items()}
-
-    def _rebuild_generator_lines(self):
-        """One row per signal line of the protocol, each picking the AFG output that carries it."""
-        clear_layout(self.gen_line_grid)
-        self.gen_line_combos = {}
-        params = self._gen_params()
-        lines = generator.lines_of(self.gen_protocol.currentText(), params)
-        # An output with no line yet still gets usable levels, since a line can be moved to it.
-        for afg in generator.OUTPUTS:
-            low, high = generator.default_levels(lines[0][0], params)
-            self.gen_levels[afg][0].setValue(low)
-            self.gen_levels[afg][1].setValue(high)
-        for row, (key, label) in enumerate(lines):
-            combo = QtWidgets.QComboBox()
-            compact(combo)
-            combo.addItem(tr("not used"), None)
-            for afg in generator.OUTPUTS:
-                combo.addItem(f"AFG{afg}", afg)
-            combo.setCurrentIndex(combo.findData(generator.OUTPUTS[row]))
-            self.gen_line_grid.addWidget(QtWidgets.QLabel(tr("Line {label}", label=label)), row, 0)
-            self.gen_line_grid.addWidget(combo, row, 1)
-            self.gen_line_combos[key] = combo
-            low, high = generator.default_levels(key, params)
-            self.gen_levels[generator.OUTPUTS[row]][0].setValue(low)
-            self.gen_levels[generator.OUTPUTS[row]][1].setValue(high)
-
-    def _current_levels(self):
-        return {afg: (low.value(), high.value()) for afg, (low, high) in self.gen_levels.items()}
-
-    def _restore_levels(self, levels):
-        for afg, (low, high) in levels.items():
-            self.gen_levels[afg][0].setValue(low)
-            self.gen_levels[afg][1].setValue(high)
-
-    def _gen_format_changed(self):
-        """Keep the data when switching between hex and ASCII."""
-        new_format = self.gen_data_format.currentData()
-        try:
-            data = generator.parse_data(self.gen_data.text(), self._gen_data_format_shown)
-            self.gen_data.setText(generator.format_data(data, new_format))
-        except ValueError:
-            self.gen_data.clear()
-        self._gen_data_format_shown = new_format
-
-    def _build_generated(self) -> generator.Generated:
-        protocol = self.gen_protocol.currentText()
-        data = generator.parse_data(self.gen_data.text(), self.gen_data_format.currentData())
-        generated = generator.build(protocol, data, self._gen_params())
-        outputs = {key: combo.currentData() for key, combo in self.gen_line_combos.items()}
-        generator.assign(generated, outputs, self._current_levels(), self.gen_load.currentData())
-        return generated
 
     # ---- jobs -----------------------------------------------------------
     def _start(self, job, on_done, label, uses_scope=True, abortable=True):
@@ -1169,10 +1093,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panel.attach(self.scope)
 
     def _used_channels(self):
-        """What is chosen on the toolbar and what the decoders need."""
+        """What is chosen in Scope settings and what the decoders need."""
         channels = self.scope_settings.selected() | {channel for card in self.cards for channel in card.mapping().values()}
         if not channels:
-            raise ValueError(tr("Choose channels in the Scope settings on the toolbar or add a decoder."))
+            raise ValueError(tr("Choose channels in Scope settings on the Waveforms tab or add a decoder."))
         return sorted(channels)
 
     def _read_job(self, channels, progress, sample_format):
@@ -1335,37 +1259,40 @@ class MainWindow(QtWidgets.QMainWindow):
                          channels=", ".join(channel_name(channel) for channel in digital), points=len(wave.volts),
                          rate=1 / wave.dt / 1e6))
         if states.get("thresholds") and not all(states["thresholds"].values()):
-            self._log(tr("Warning: the digital channels' threshold is 0 V, so positive logic may not change state. Set it in Scope settings on the toolbar."))
+            self._log(tr("Warning: the digital channels' threshold is 0 V, so positive logic may not change state. Set it in Scope settings on the Waveforms tab."))
 
     def _autoscale(self):
         try:
-            channels = [channel for channel in self._used_channels() if not is_digital(channel)]
+            channels = {channel for channel in self._used_channels() if not is_digital(channel)}
         except ValueError as exc:
             self._log(tr("ERROR: {message}", message=exc))
             return
         if not channels:
             self._log(tr("ERROR: {message}", message=tr("Autoscale works on analog channels only.")))
             return
-        trigger_channel = None
-        if self.panel.trigger_mode.currentData() == "EDGE":
-            found = re.fullmatch(r"CHANnel(\d)", self.panel.edge_setting("SOURce").current())
-            trigger_channel = int(found.group(1)) if found else None
-        slope = self.panel.edge_setting("SLOPe").current()
-        auto_depth = self.panel.depth_is_auto()
+        self._start(lambda _progress: self._autoscale_job(channels), self._autoscaled, tr("Autoscale…"))
 
-        def job(_progress):
-            return self.scope.autoscale(channels, trigger_channel, slope, auto_depth)
+    def _autoscale_job(self, channels):
+        kept = self.scope.autoscale(channels)
+        return kept, fit_time_to_packet(self.scope, kept)
 
-        self._start(job, self._autoscaled, tr("Autoscale…"))
-
-    def _autoscaled(self, levels):
-        for channel, (low, high) in levels.items():
-            self._log(tr("Autoscale CH{channel}: {low:.3f} V … {high:.3f} V", channel=channel, low=low, high=high))
+    def _autoscaled(self, result):
+        channels, fit = result
+        picker = self.scope_settings
+        picker.follow_the_scope()  # the next acquisition must not overwrite the time base and the trigger it set
+        # An acquisition turns off what is not chosen.
+        picker.choose(channels | {channel for channel in picker.chosen if is_digital(channel)})
+        self._log(tr("Autoscale: signal on {channels}.", channels=", ".join(channel_name(channel) for channel in sorted(channels))))
+        if fit.packet is None:
+            self._log(tr("Autoscale: no whole packet found, so the time base stays as the scope's Auto set it, {scale}, with no holdoff.", scale=generator.format_time_scale(fit.time_scale)))
+        else:
+            self._log(tr("Autoscale: time base {scale} and holdoff {holdoff} for a packet of {length}.", scale=generator.format_time_scale(fit.time_scale),
+                         holdoff=format_si(fit.holdoff, "s"), length=format_si(fit.packet, "s")))
 
     # ---- generator actions ----------------------------------------------
     def _generate(self):
         try:
-            generated = self._build_generated()
+            generated = self.gen_form.build()
         except ValueError as exc:
             self._log(tr("ERROR: {message}", message=exc))
             return
@@ -1393,9 +1320,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._start(job, lambda _result: self._log(tr("AFG outputs switched off.")), tr("Switching the AFG off…"))
 
     def _match_decoder(self):
-        """Set the decoder and timebase for the generator's signal; AFGn is assumed on CHn."""
+        """Set the decoder and timebase for the generator's signal. What an output is wired to is unknown here,
+        so the channels and the trigger source stay as the user set them."""
         try:
-            generated = self.generated or self._build_generated()
+            generated = self.generated or self.gen_form.build()
         except ValueError as exc:
             self._log(tr("ERROR: {message}", message=exc))
             return
@@ -1403,13 +1331,9 @@ class MainWindow(QtWidgets.QMainWindow):
                      if card.decoder.name == generated.decoder), None) or self.new_decoder(generated.decoder)
         self.scope_settings.follow_the_scope()  # what is set just below must not be overwritten by the acquisition
         card.building = True
-        channels = {key: afg for afg, key in generated.outputs.items()}
         for row in card.signal_rows:
-            channel = channels.get(generated.signals.get(row.spec.key))
-            row.channel.setCurrentIndex(max(0, row.channel.findData(channel)))
             row.auto.setChecked(True)
         self.panel.settings["trigger_mode"].set_value("EDGE")
-        self.panel.edge_setting("SOURce").set_value(f"CHANnel{max(generated.outputs)}")
         self.panel.edge_setting("SLOPe").set_value("NEGative")
         defaults = DECODERS[generated.decoder].defaults()
         for key, widget in card.param_widgets.items():
@@ -1685,7 +1609,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plots = []
         self.lanes = {}
         self.time_axis_plot = None
-        self.graphics.addLabel(tr("Choose channels in the Scope settings on the toolbar or add a decoder."), color=self.theme.canvas_text)
+        self.graphics.addLabel(tr("Choose channels in Scope settings on the Waveforms tab or add a decoder."), color=self.theme.canvas_text)
         self.graphics.ci.setGeometry(self.graphics.range)
         self._update_time_bar()
 
@@ -1808,10 +1732,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return plot
 
     def _channel_color(self, channel):
-        if is_digital(channel):
-            colors = self.theme.digital
-            return colors[(channel - digital_channel(0)) % len(colors)]
-        return self.theme.channels[channel]
+        return self.theme.digital if is_digital(channel) else self.theme.channels[channel]
 
     def _display_threshold(self, channel, wave):
         if wave.digital:
@@ -2388,7 +2309,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         self.center_tabs.setCurrentIndex(0)  # the scope tab hides the panels, and that must not be remembered
         self.settings.setValue("window_geometry", self.saveGeometry())
-        self.settings.setValue("window_state", self.saveState())
+        self.settings.setValue("window_state", self.saveState(WINDOW_LAYOUT_VERSION))
         self.log_window.close()
         for card in self.cards:
             card.config_window.close()

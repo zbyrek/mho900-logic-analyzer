@@ -211,6 +211,7 @@ M1553 = Mode("M1553", "MIL-STD-1553B", "M1553", (
 ))
 
 MODES = (EDGE, RS232, I2C, SPI, CAN, LIN, I2S, FLEXRAY, M1553)
+HOLDOFF_MODES = (EDGE.name,)  # the Programming Guide rules holdoff out for all the others on this list
 
 
 def is_source(field: Field) -> bool:

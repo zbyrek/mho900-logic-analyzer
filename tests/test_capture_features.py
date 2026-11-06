@@ -15,7 +15,10 @@ from mhodecode import segments, trigger  # noqa: E402
 from mhodecode.decoder_panel import RateBox, format_rate  # noqa: E402
 from mhodecode.decoders.sigrok import TYPICAL_RATES  # noqa: E402
 from mhodecode.decoders.base import Annotation, DecodeResult  # noqa: E402
-from mhodecode.scope import CapturePlan, Scope, ScopeError, Waveform, digital_channel, format_si, standard_scale, vertical_scales  # noqa: E402
+from mhodecode import packet_fit  # noqa: E402
+from mhodecode.packet_fit import MAX_FIT_TIME_SCALE, fit_time_to_packet  # noqa: E402
+from mhodecode.signal import PacketSearch, from_levels, longest_packet  # noqa: E402
+from mhodecode.scope import HOLDOFF_MAX_S, CapturePlan, Scope, ScopeError, Waveform, digital_channel, format_si, vertical_scales  # noqa: E402
 from mhodecode.scope_panel import ScreenView, parse_seconds  # noqa: E402
 from mhodecode.screen_stream import MOUSE_DOWN, MOUSE_MOVE, MOUSE_UP, ScreenStream  # noqa: E402
 from test_gui import CaptureScope, PlanScope, RecordingLink, app, run_job, square_wave, window  # noqa: E402, F401
@@ -644,7 +647,6 @@ def test_the_volt_steps_are_the_standard_ones_times_the_probe():
     assert vertical_scales(1)[0] == 0.001 and vertical_scales(1)[-1] == 10.0 and 0.5 in vertical_scales(1)
     assert vertical_scales(10)[0] == 0.01 and vertical_scales(10)[-1] == 100.0 and 5.0 in vertical_scales(10)
     assert vertical_scales(15)[:3] == [0.015, 0.03, 0.075]
-    assert standard_scale(0.66, 1) == 1.0 and standard_scale(0.5, 1) == 0.5 and standard_scale(1000.0, 1) == 10.0
 
 
 def values_of(combo):
@@ -728,41 +730,205 @@ def test_an_acquisition_on_auto_tells_the_tab(window, app):
     menu.depth.setCurrentIndex(0)
 
 
-class AutoscaleScope(Scope):
-    """Measures a 0 to 3.96 V signal: its own scale would be 0.66 V per division."""
-
-    def __init__(self, probe=1.0):
+class AutoScope(Scope):
+    def __init__(self, on=(), locked="0", refused=()):
         self.sent = []
-        self.probe = probe
+        self.on = on
+        self.locked = locked
+        self.refused = list(refused)
+
+    def errors(self):
+        return self.refused if ":AUToset" in self.sent else []
 
     def write(self, command):
         self.sent.append(command)
 
     def query(self, command):
-        if command.endswith(":PROBe?"):
-            return str(self.probe)
-        return {":ACQuire:MDEPth?": "5.0000E+05"}.get(command, "1")
+        if command == ":AUToset:LOCK?":
+            return self.locked
+        if command.endswith(":DISPlay?"):
+            return "1" if int(command[len(":CHANnel")]) in self.on else "0"
+        self.sent.append(command)
+        return "1"
 
-    def single(self, timeout=10.0, force_after=1.0):
+
+def test_autoscale_runs_the_scope_s_own_on_the_channels_chosen():
+    scope = AutoScope(on=(3,))
+    assert scope.autoscale({3, 4}) == {3}  # the scope turned off the one with no signal
+    assert scope.sent == [":CHANnel3:DISPlay ON", ":CHANnel4:DISPlay ON", ":CHANnel1:DISPlay OFF", ":CHANnel2:DISPlay OFF",
+                          ":AUToset:OPENch ON", ":AUToset", "*OPC?"]
+
+
+def test_autoscale_reports_when_the_scope_refuses_for_lack_of_a_signal():
+    scope = AutoScope(on=(1,), refused=['-200,"Command execute failed"'])
+    with pytest.raises(ScopeError, match="-200"):
+        scope.autoscale({1})
+
+
+def test_autoscale_says_so_when_the_scope_has_it_locked():
+    scope = AutoScope(locked="1")
+    with pytest.raises(ScopeError):
+        scope.autoscale({1})
+    assert scope.sent == []
+
+
+def burst_levels(idle_before, pulses, idle_after, width=10):
+    return [0] * idle_before + ([1] * width + [0] * width) * pulses + [0] * idle_after
+
+
+def test_a_packet_with_a_pause_on_both_sides_is_measured():
+    trace = from_levels(burst_levels(2000, 8, 2000), dt=1e-6)
+    assert longest_packet([trace]).length == pytest.approx(150e-6)  # 16 edges, 10 samples apart
+
+
+def test_a_record_of_steady_edges_holds_no_packet():
+    assert longest_packet([from_levels(burst_levels(0, 500, 0), dt=1e-6)]).length is None
+
+
+def test_a_packet_cut_by_the_end_of_the_record_does_not_count():
+    assert longest_packet([from_levels(burst_levels(2000, 8, 0), dt=1e-6)]).length is None
+    assert longest_packet([from_levels(burst_levels(0, 8, 2000)[1:], dt=1e-6)]).length is None
+
+
+def test_the_longest_of_the_packets_in_a_record_counts():
+    levels = burst_levels(2000, 4, 2000) + burst_levels(0, 8, 2000)
+    assert longest_packet([from_levels(levels, dt=1e-6)]).length == pytest.approx(150e-6)
+
+
+def test_edges_of_two_lines_close_together_do_not_split_a_packet():
+    clock = burst_levels(2000, 8, 2000)
+    data = [0] * 3 + clock[:-3]  # follows the clock by 3 samples of 10
+    assert longest_packet([from_levels(clock, dt=1e-6), from_levels(data, dt=1e-6)]).length == pytest.approx(153e-6)
+
+
+def test_a_run_of_edges_at_the_end_of_the_record_says_a_longer_packet_may_go_on():
+    levels = burst_levels(2000, 4, 2000) + burst_levels(0, 8, 0)
+    found = longest_packet([from_levels(levels, dt=1e-6)])
+    assert found.length == pytest.approx(70e-6) and found.cut
+
+
+def test_a_line_of_a_few_edges_is_still_part_of_the_packet():
+    clock = burst_levels(2000, 8, 2000)
+    select = [0] * 1990 + [1] * 180 + [0] * (len(clock) - 2170)  # two edges around the clock's burst
+    assert longest_packet([from_levels(clock, dt=1e-6), from_levels(select, dt=1e-6)]).length == pytest.approx(180e-6)
+
+
+class FitScope:
+    """Holds a packet of 100 µs every 2.56 ms; a record covers this many divisions at the time scale set."""
+
+    def __init__(self, scale, packet=True):
+        self.scale = scale
+        self.packet = packet
+        self.scales = []
+        self.holdoff = None
+        self.ran = False
+
+    def query_float(self, command):
+        return {":TIMebase:MAIN:SCALe?": self.scale, ":ACQuire:MDEPth?": 100_000.0}.get(command, 1.0)
+
+    def set_time_scale(self, scale):
+        self.scale = scale
+        self.scales.append(scale)
+
+    def set_holdoff(self, seconds):
+        self.holdoff = seconds
+
+    def single(self, force_after):
+        assert force_after is not None  # with no trigger a record is still wanted
         return True
 
-    def fetch(self, channel, points=None, progress=None, sample_format="BYTE"):
-        return Waveform(channel, np.r_[np.zeros(500), np.full(500, 3.96)].astype(np.float32), 1e-6, 0.0)
+    def run(self):
+        self.ran = True
+
+    def fetch(self, channel, points):
+        dt = self.scale * 10 / points
+        times = np.arange(points) * dt
+        phase = times % 2.56e-3
+        if self.packet:
+            high = (phase > 1e-3) & (phase < 1.1e-3) & ((phase // 2e-6) % 2 == 1)
+        else:
+            high = (times // 0.7e-6) % 2 == 1  # a clock, with a period no sample step of the record divides into
+        return Waveform(channel, high.astype(np.float32) * 3.3, dt, 0.0)
 
 
-@pytest.mark.parametrize("probe, scale", [(1.0, "1"), (10.0, "1")])
-def test_autoscale_ends_on_a_standard_step_with_the_fine_adjustment_off(probe, scale):
-    scope = AutoscaleScope(probe)
-    scope.autoscale([1])
-    scales = [command for command in scope.sent if command.startswith(":CHANnel1:SCALe")]
-    assert scales[-1] == f":CHANnel1:SCALe {scale}" and ":CHANnel1:VERNier OFF" in scope.sent
+def test_the_time_scale_is_fitted_to_a_packet_the_record_holds():
+    scope = FitScope(10e-3)
+    fit = fit_time_to_packet(scope, {4})
+    assert fit.packet == pytest.approx(100e-6, rel=0.05)
+    assert fit.time_scale == pytest.approx(20e-6)  # half a screen is 100 µs, from the trigger at its centre
+    assert scope.scale == fit.time_scale and scope.ran
 
 
-@pytest.mark.parametrize("auto, restored", [(True, ":ACQuire:MDEPth AUTO"), (False, ":ACQuire:MDEPth 500000")])
-def test_autoscale_puts_the_memory_depth_back(auto, restored):
-    scope = AutoscaleScope()
-    scope.autoscale([1], auto_depth=auto)
-    assert [command for command in scope.sent if command.startswith(":ACQuire:MDEPth")][-1] == restored
+def test_the_holdoff_ends_after_the_packet_and_before_the_next_can_begin():
+    scope = FitScope(10e-3)
+    fit = fit_time_to_packet(scope, {4})
+    assert scope.holdoff == fit.holdoff
+    assert fit.packet < fit.holdoff < 2.56e-3
+
+
+def test_the_holdoff_stays_in_the_range_of_the_scope(monkeypatch):
+    monkeypatch.setattr(packet_fit, "measure_packet", lambda _scope, _channels: (PacketSearch(20.0, False, 1.0), False))
+    assert fit_time_to_packet(FitScope(0.1), {4}).holdoff == HOLDOFF_MAX_S
+
+
+def test_the_time_scale_is_widened_until_a_record_holds_a_packet():
+    scope = FitScope(10e-6)  # a record of 100 µs starting at the idle time
+    fit = fit_time_to_packet(scope, {4})
+    assert scope.scales[0] == pytest.approx(100e-6)
+    assert fit.packet == pytest.approx(100e-6, rel=0.05)
+    assert scope.scale == fit.time_scale and scope.ran
+
+
+def test_a_channel_silent_in_the_record_makes_it_look_further():
+    scope = FitScope(0.5e-3)  # a record of 5 ms has CH3's packet and nothing of CH4's
+    real = scope.fetch
+
+    def fetch(channel, points):
+        wave = real(channel, points)
+        if channel == 4:  # 425 µs every 8.889 ms, from 6 ms on
+            phase = (np.arange(points) * wave.dt - 6e-3) % 8.889e-3
+            high = (phase < 425e-6) & ((phase // 10e-6) % 2 == 0)
+            return Waveform(4, high.astype(np.float32) * 3.3, wave.dt, 0.0)
+        return wave
+    scope.fetch = fetch
+    fit = fit_time_to_packet(scope, {3, 4})
+    # In a long record a packet of the other, unrelated signal can run into it, which only makes it longer.
+    assert fit.packet >= 420e-6
+    assert fit.time_scale * 5 >= fit.packet
+
+
+def test_a_signal_without_packets_keeps_the_time_scale_of_auto():
+    scope = FitScope(1e-6, packet=False)
+    fit = fit_time_to_packet(scope, {4})
+    assert fit.packet is None and fit.time_scale == 1e-6
+    assert fit.holdoff is None and scope.holdoff is None  # Auto leaves none, and this finds no packet to hold off for
+    assert max(scope.scales) <= MAX_FIT_TIME_SCALE
+    assert scope.scale == 1e-6 and scope.ran
+
+
+def test_a_failed_search_leaves_the_scope_running_at_the_time_scale_of_auto():
+    scope = FitScope(10e-6)
+
+    def failing(_channel, _points):
+        raise ScopeError("lost")
+    scope.fetch = failing
+    with pytest.raises(ScopeError):
+        fit_time_to_packet(scope, {4})
+    assert scope.scale == 10e-6 and scope.ran
+
+
+def test_noise_on_a_quiet_channel_does_not_pass_for_a_fast_line():
+    scope = FitScope(10e-3)
+    real = scope.fetch
+
+    def fetch(channel, points):
+        wave = real(channel, points)
+        if channel == 1:
+            noise = np.random.default_rng(1).normal(0, 0.01, points).astype(np.float32)
+            return Waveform(1, noise, wave.dt, wave.t0)
+        return wave
+    scope.fetch = fetch
+    assert fit_time_to_packet(scope, {1, 4}).packet == pytest.approx(100e-6, rel=0.05)
 
 
 @pytest.mark.parametrize("value, text", [(0.0, "0 s"), (1.2112e-3, "1.2112 ms"), (-2e-6, "-2 µs"), (3e-9, "3 ns"), (1.5, "1.5 s"), (5e-12, "5 ps")])
