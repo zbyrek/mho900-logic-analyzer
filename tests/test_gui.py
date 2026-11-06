@@ -16,12 +16,14 @@ from mhodecode import generator, i18n, siggen  # noqa: E402
 from mhodecode.decoders import SIGROK, SIGROK_ROOTS  # noqa: E402
 from mhodecode import abort, rigol_files, trigger  # noqa: E402
 from mhodecode.decoder_panel import DECODER_MIME  # noqa: E402
-from mhodecode.gui import TIME_BAR_STEPS, MainWindow  # noqa: E402
+from mhodecode.gui import TIME_BAR_STEPS, WINDOW_LAYOUT_VERSION, MainWindow  # noqa: E402
 from mhodecode import trigger  # noqa: E402
 from mhodecode.channel_controls import DIGITAL, ChannelDialog, ScopeSettings  # noqa: E402
+from mhodecode.packet_fit import PacketFit  # noqa: E402
 from mhodecode.scope import CapturePlan, Scope, ScopeError, digital_channel  # noqa: E402
 from mhodecode.signal import digitize  # noqa: E402
 from mhodecode.scope_panel import LiveLink  # noqa: E402
+from mhodecode.scope_status import ScopeStatus  # noqa: E402
 from mhodecode.theme import THEMES  # noqa: E402
 from mhodecode.scope import CapturePlan, Waveform  # noqa: E402
 
@@ -82,8 +84,8 @@ def test_english_leaves_no_polish_text_in_any_protocol(window):
     window._set_language("en")
     for protocol in ("UART", "I2C", "SPI", "CAN"):
         use(window, protocol)
-        for generated in range(window.gen_protocol.count()):
-            window.gen_protocol.setCurrentIndex(generated)
+        for generated in range(window.gen_form.protocol.count()):
+            window.gen_form.protocol.setCurrentIndex(generated)
             bad = [text for text in visible_texts(window) if POLISH.search(text)]
             assert not bad, bad
     use_sigrok(window, "eeprom24xx")
@@ -104,16 +106,16 @@ def test_language_switch_keeps_the_forms(window):
     use(window, "UART")
     active(window).param_widgets["parity"].setCurrentIndex(active(window).param_widgets["parity"].findData("odd"))
     active(window).signal_rows[0].channel.setCurrentIndex(active(window).signal_rows[0].channel.findData(3))
-    window.gen_protocol.setCurrentText("I2C")
-    window.gen_line_combos["scl"].setCurrentIndex(window.gen_line_combos["scl"].findData(2))
-    window.gen_line_combos["sda"].setCurrentIndex(window.gen_line_combos["sda"].findData(1))
-    window.gen_levels[1][1].setValue(1.8)
+    window.gen_form.protocol.setCurrentText("I2C")
+    window.gen_form.line_combos["scl"].setCurrentIndex(window.gen_form.line_combos["scl"].findData(2))
+    window.gen_form.line_combos["sda"].setCurrentIndex(window.gen_form.line_combos["sda"].findData(1))
+    window.gen_form.levels[1][1].setValue(1.8)
     window._set_language("pl")
     assert active(window).param_widgets["parity"].currentData() == "odd"
     assert active(window).signal_rows[0].channel.currentData() == 3
-    assert window.gen_line_combos["scl"].currentData() == 2
-    assert window.gen_line_combos["sda"].currentData() == 1
-    assert window.gen_levels[1][1].value() == pytest.approx(1.8)
+    assert window.gen_form.line_combos["scl"].currentData() == 2
+    assert window.gen_form.line_combos["sda"].currentData() == 1
+    assert window.gen_form.levels[1][1].value() == pytest.approx(1.8)
     assert window.connect_button.text() == "Połącz"
 
 
@@ -125,40 +127,272 @@ def test_time_base_is_a_1_2_5_menu(window):
 
 
 def test_generator_lines_follow_the_protocol(window):
-    window.gen_protocol.setCurrentText("CAN FD")
-    assert list(window.gen_line_combos) == ["can"]
-    widget = window.gen_param_widgets["differential"]
+    window.gen_form.protocol.setCurrentText("CAN FD")
+    assert list(window.gen_form.line_combos) == ["can"]
+    widget = window.gen_form.param_widgets["differential"]
     widget.setCurrentIndex(widget.findData(True))
-    assert list(window.gen_line_combos) == ["can", "can_l"]
-    assert window.gen_levels[1][0].value() == 2.5 and window.gen_levels[2][1].value() == 2.5
-    assert window.gen_line_combos["can_l"].currentData() == 2
+    assert list(window.gen_form.line_combos) == ["can", "can_l"]
+    assert window.gen_form.levels[1][0].value() == 2.5 and window.gen_form.levels[2][1].value() == 2.5
+    assert window.gen_form.line_combos["can_l"].currentData() == 2
 
 
 def test_switching_data_format_keeps_the_data(window):
-    window.gen_data.setText("48 65 0D")
-    window.gen_data_format.setCurrentIndex(window.gen_data_format.findData("ascii"))
-    assert window.gen_data.text() == '"He\\r"'
-    window.gen_data_format.setCurrentIndex(window.gen_data_format.findData("hex"))
-    assert window.gen_data.text() == "0x48 0x65 0x0D"
+    window.gen_form.data.setText("48 65 0D")
+    window.gen_form.data_format.setCurrentIndex(window.gen_form.data_format.findData("ascii"))
+    assert window.gen_form.data.text() == '"He\\r"'
+    window.gen_form.data_format.setCurrentIndex(window.gen_form.data_format.findData("hex"))
+    assert window.gen_form.data.text() == "0x48 0x65 0x0D"
 
 
 def test_match_decoder_copies_generator_settings(window):
-    window.gen_protocol.setCurrentText("CAN FD")
-    window.gen_data.setText("01 02 03 04")
+    window.gen_form.protocol.setCurrentText("CAN FD")
+    window.gen_form.data.setText("01 02 03 04")
     window._match_decoder()
     assert active(window).decoder.name == "CAN"
     assert active(window).param_widgets["nominal_bitrate"].value() == 500000
     assert active(window).param_widgets["fast_bitrate"].value() == 2000000
     assert window.panel.settings["time_scale"].hold_until > 0
-    assert window.panel.edge_setting("SOURce").current() == "CHANnel1"
 
 
-def test_match_decoder_follows_the_chosen_output(window):
-    window.gen_protocol.setCurrentText("UART")
-    window.gen_line_combos["tx"].setCurrentIndex(window.gen_line_combos["tx"].findData(2))
+def test_match_decoder_ties_no_output_to_an_input(window):
+    window.gen_form.protocol.setCurrentText("UART")
     window._match_decoder()
-    assert active(window).mapping()["tx"] == 2
-    assert window.panel.edge_setting("SOURce").current() == "CHANnel2"
+    row = next(row for row in active(window).signal_rows if row.spec.key == "tx")
+    row.channel.setCurrentIndex(row.channel.findData(digital_channel(11)))
+    window.panel.edge_setting("SOURce").set_value("CHANnel3")
+    window.gen_form.line_combos["tx"].setCurrentIndex(window.gen_form.line_combos["tx"].findData(2))
+    window._match_decoder()
+    assert active(window).mapping()["tx"] == digital_channel(11)
+    assert window.panel.edge_setting("SOURce").current() == "CHANnel3"
+
+
+def test_autoscale_leaves_the_channels_time_base_and_trigger_to_the_scope(window):
+    picker = window.scope_settings
+    picker.choose({1, digital_channel(4)})
+    picker.time_scale.setCurrentIndex(1)
+    window._autoscaled(({3, 4}, PacketFit(1e-3, None)))
+    assert picker.chosen == {3, 4, digital_channel(4)}
+    assert picker.time_scale.currentData() is None
+
+
+class AutoscaleRecorder:
+    def __init__(self):
+        self.asked = None
+
+    def autoscale(self, channels):
+        self.asked = channels
+        return channels
+
+    def query_float(self, _command):
+        return 1e-3
+
+    def set_time_scale(self, _scale):
+        pass
+
+    def run(self):
+        pass
+
+    def single(self, **_settings):
+        return True
+
+    def fetch(self, channel, _points):
+        return Waveform(channel, np.zeros(1000, dtype=np.float32), 1e-6, 0.0)
+
+
+def test_autoscale_asks_for_the_analog_channels_chosen_in_the_app(window, monkeypatch):
+    recorder = AutoscaleRecorder()
+    monkeypatch.setattr(window, "scope", recorder)
+    monkeypatch.setattr(window, "_start", lambda job, done, _text: done(job(None)))
+    window.remove_all_decoders()
+    window.scope_settings.choose({3, digital_channel(4)})
+    window._autoscale()
+    assert recorder.asked == {3}
+
+
+def test_autoscale_needs_an_analog_channel(window, monkeypatch):
+    recorder = AutoscaleRecorder()
+    monkeypatch.setattr(window, "scope", recorder)
+    monkeypatch.setattr(window, "_start", lambda job, done, _text: done(job(None)))
+    window.remove_all_decoders()
+    window.scope_settings.choose({digital_channel(4)})
+    window._autoscale()
+    assert recorder.asked is None
+
+
+def test_autoscale_is_on_the_scope_tab_and_not_on_the_toolbar(window):
+    button = window.panel.autoscale_button
+    assert window.panel.isAncestorOf(button)
+    assert button in window.busy_widgets
+    assert not hasattr(window, "autoscale_button")
+
+
+def test_the_analyzer_controls_are_on_their_tab_and_only_the_connection_is_global(window):
+    page = window.waveforms_page
+    for control in (window.scope_settings, window.single_button, window.repeat_button, window.read_button, window.zoom_in_button,
+                    window.zoom_out_button, window.zoom_fit_button, window.display_mode, window.cursors_button):
+        assert page.isAncestorOf(control)
+    bar = window.findChild(QtWidgets.QToolBar, "device_bar")
+    assert {window.host, window.connect_button, window.connection_state} <= set(bar.findChildren(QtWidgets.QWidget))
+    assert not bar.findChildren(QtWidgets.QStackedWidget)
+    assert window.scope_settings not in bar.findChildren(QtWidgets.QWidget)
+
+
+def test_the_scope_tab_buttons_do_not_widen_the_window(window):
+    left = window.panel.splitter.widget(0)
+    assert left.minimumSizeHint().width() <= window.panel.screen_view.minimumWidth()
+
+
+def test_connecting_without_an_address_asks_for_one(window, monkeypatch):
+    from mhodecode.gui import DEFAULT_HOST
+    assert DEFAULT_HOST == ""
+    logged = []
+    monkeypatch.setattr(window, "_log", logged.append)
+    window.host.setText("  ")
+    window._toggle_connection()
+    assert window.scope is None and logged == ["Enter the scope's IP address."]
+
+
+def test_buttons_needing_a_scope_start_off_without_a_connection(window):
+    assert window.scope is None
+    assert not window.single_button.isEnabled() and not window.panel.autoscale_button.isEnabled() and not window.gen_button.isEnabled()
+
+
+def test_a_running_job_can_be_stopped_from_either_tab(window):
+    panel = window.panel
+    assert panel.autoscale_place.currentWidget() is panel.autoscale_button
+    window.worker, window.abortable = object(), True
+    try:
+        window._refresh_buttons()
+        assert panel.autoscale_place.currentWidget() is panel.abort_button and panel.abort_button.isEnabled()
+        assert window.run_place.currentWidget() is window.abort_button and window.abort_button.isEnabled()
+    finally:
+        window.worker, window.abortable = None, False
+        window._refresh_buttons()
+    assert panel.autoscale_place.currentWidget() is panel.autoscale_button and not panel.abort_button.isEnabled()
+
+
+def choose_file_tool_signal(tool, protocol, data="48 65"):
+    tool.form.protocol.setCurrentText(protocol)
+    tool.form.data.setText(data)
+
+
+def test_the_file_tool_shows_the_frequency_the_generator_tab_would_play(window):
+    tool = window.afg_file_window
+    window.gen_form.protocol.setCurrentText("UART")
+    window.gen_form.data.setText("48 65")
+    choose_file_tool_signal(tool, "UART")
+    played = window.gen_form.build()
+    text = tool.setup.toPlainText()
+    assert f"{played.afg_frequency:.6f} Hz" in text
+    assert "3.3 Vpp" in text and "1.65 V" in text
+    assert "uart_tx.csv" in text
+    assert "Align Phase" not in text
+
+
+def test_the_file_tool_needs_no_connection(window):
+    assert window.scope is None
+    assert window.afg_file_window.save_button.isEnabled()
+
+
+def test_the_file_tool_says_why_there_is_no_signal(window):
+    tool = window.afg_file_window
+    tool.form.data.setText("zz")
+    assert not tool.save_button.isEnabled()
+    assert "zz" in tool.setup.toPlainText()
+    tool.form.data.setText("48")
+    assert tool.save_button.isEnabled()
+
+
+def test_the_file_tool_follows_a_changed_rate_and_level(window):
+    tool = window.afg_file_window
+    choose_file_tool_signal(tool, "UART")
+    before = tool.setup.toPlainText()
+    tool.form.param_widgets["rate"].setValue(9600)
+    assert tool.setup.toPlainText() != before
+    assert f"{tool.form.build().afg_frequency:.6f} Hz" in tool.setup.toPlainText()
+    tool.form.levels[1][1].setValue(1.8)
+    assert "1.8 Vpp" in tool.setup.toPlainText()
+
+
+def test_the_file_tool_writes_one_record_per_line(window, tmp_path, monkeypatch):
+    tool = window.afg_file_window
+    choose_file_tool_signal(tool, "I2C")
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *_args, **_options: (str(tmp_path / "hello.csv"), ""))
+    tool.save()
+    generated = tool.form.build()
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["hello_scl.csv", "hello_sda.csv"]
+    for name, key in (("hello_scl.csv", "scl"), ("hello_sda.csv", "sda")):
+        content = (tmp_path / name).read_bytes()
+        assert content.endswith(b"\r\n")
+        rows = content.split(b"\r\n")[:-1]
+        assert len(rows) == 16384
+        assert [int(row) for row in rows] == generated.lines[key].tolist()
+    text = tool.setup.toPlainText()
+    assert "hello_scl.csv" in text and "hello_sda.csv" in text and "Align Phase" in text
+    assert "hello_scl.csv" in tool.result.text()
+
+
+def test_the_file_tool_leaves_out_a_line_not_used(window, tmp_path, monkeypatch):
+    tool = window.afg_file_window
+    choose_file_tool_signal(tool, "I2C")
+    combo = tool.form.line_combos["sda"]
+    combo.setCurrentIndex(combo.findData(None))
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *_args, **_options: (str(tmp_path / "i2c.csv"), ""))
+    tool.save()
+    assert [path.name for path in tmp_path.iterdir()] == ["i2c_scl.csv"]
+    combo.setCurrentIndex(combo.findData(2))
+
+
+def test_the_file_tool_asks_before_replacing_a_file(window, tmp_path, monkeypatch):
+    tool = window.afg_file_window
+    choose_file_tool_signal(tool, "UART")
+    target = tmp_path / "uart_tx.csv"
+    target.write_bytes(b"mine")
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *_args, **_options: (str(tmp_path / "uart.csv"), ""))
+    asked = []
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda _parent, _title, text: asked.append(text) or QtWidgets.QMessageBox.No)
+    tool.save()
+    assert target.read_bytes() == b"mine"
+    assert "uart_tx.csv" in asked[0]
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda _parent, _title, _text: QtWidgets.QMessageBox.Yes)
+    tool.save()
+    assert target.read_bytes() != b"mine"
+
+
+def test_the_file_tool_reports_a_failed_write(window, tmp_path, monkeypatch):
+    tool = window.afg_file_window
+    choose_file_tool_signal(tool, "UART")
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *_args, **_options: (str(tmp_path / "absent" / "uart.csv"), ""))
+    tool.save()
+    assert "ERROR" in tool.result.text() or "BŁĄD" in tool.result.text()
+
+
+def test_the_file_tool_and_the_generator_tab_are_separate_forms(window):
+    window.gen_form.protocol.setCurrentText("SPI")
+    window.afg_file_window.form.protocol.setCurrentText("CAN")
+    assert window.gen_form.protocol.currentText() == "SPI"
+    assert list(window.gen_form.line_combos) == ["clk", "mosi"]
+
+
+def test_language_switch_keeps_the_file_tool_form(window):
+    tool = window.afg_file_window
+    choose_file_tool_signal(tool, "I2C")
+    tool.form.levels[1][1].setValue(1.8)
+    combo = tool.form.line_combos["scl"]
+    combo.setCurrentIndex(combo.findData(2))
+    other = tool.form.line_combos["sda"]
+    other.setCurrentIndex(other.findData(1))
+    window._set_language("pl")
+    assert tool.form.levels[1][1].value() == pytest.approx(1.8)
+    assert tool.form.line_combos["scl"].currentData() == 2
+    assert "Częstotliwość" in tool.setup.toPlainText()
+    assert tool.windowTitle() == "Pliki przebiegów AFG"
+
+
+def test_channels_have_the_colours_of_the_scope_screen(window):
+    window.set_theme("dark")
+    assert [window._channel_color(channel) for channel in (1, 2, 3, 4)] == ["#ffff00", "#00ffff", "#ff00ff", "#007fff"]
+    assert window._channel_color(digital_channel(0)) == window._channel_color(digital_channel(15)) == "#04c304"
 
 
 def test_compare_without_generation_says_what_to_do(window):
@@ -301,12 +535,61 @@ def test_decoders_add_up_one_under_another(window):
 
 
 def test_the_same_decoder_twice_has_its_own_channels_and_options(window):
+    window.scope_settings.choose({1, 2})
     first = window.new_decoder("UART")
     second = window.new_decoder("UART")
     assert first.caption == "UART" and second.caption == "UART #2"
     assert first.signal_rows[0].channel.currentData() != second.signal_rows[0].channel.currentData()
     second.param_widgets["parity"].setCurrentIndex(second.param_widgets["parity"].findData("odd"))
     assert first.params()["parity"] != second.params()["parity"]
+
+
+def test_a_new_decoder_takes_the_channels_chosen_rather_than_channel_1(window):
+    window.remove_all_decoders()
+    window.scope_settings.choose({3, 4})
+    card = window.new_decoder("UART")
+    assert set(card.mapping().values()) == {3}
+
+
+def test_a_new_decoder_prefers_what_is_on_the_scope_to_what_is_only_chosen(window, monkeypatch):
+    window.remove_all_decoders()
+    window.scope_settings.choose({1})
+    monkeypatch.setattr(window.panel, "channels_on", lambda: {4})
+    assert window._channels_for_new_decoder()[:2] == [4, 1]
+
+
+def test_a_new_decoder_prefers_a_channel_that_showed_a_signal_to_a_flat_one(window):
+    window.remove_all_decoders()
+    window.scope_settings.choose({1, 4})
+    flat = Waveform(1, np.zeros(1000, dtype=np.float32), 1e-6, 0.0)
+    toggling = Waveform(4, np.tile(np.float32([0, 3.3]), 500), 1e-6, 0.0)
+    window.waves, window.signal_known = {1: flat, 4: toggling}, {}
+    assert window._channels_for_new_decoder()[0] == 4
+    assert window._channels_for_new_decoder().index(1) > 0
+
+
+def test_a_further_decoder_takes_a_free_channel_before_an_active_one_in_use(window):
+    window.remove_all_decoders()
+    window.scope_settings.choose({3})
+    first = window.new_decoder("UART")
+    assert first.signal_rows[0].channel.currentData() == 3
+    second = window.new_decoder("UART")
+    assert second.signal_rows[0].channel.currentData() == 3  # the only one active: no further channel is added
+    window.remove_all_decoders()
+    window.scope_settings.choose({3, 4})
+    window.new_decoder("UART")
+    assert window.new_decoder("UART").signal_rows[0].channel.currentData() == 4
+
+
+def test_required_signals_beyond_the_active_channels_stay_empty(window):
+    window.remove_all_decoders()
+    window.scope_settings.choose({3})
+    window.waves = {3: Waveform(3, np.tile(np.float32([0, 3.3]), 500), 1e-6, 0.0)}
+    card = window.select_sigrok("i2c")
+    assert [row.channel.currentData() for row in card.signal_rows] == [3, None]
+    assert window.scope_settings.selected() == {3}
+    run_decode(window)
+    assert "Assign channels" in card.problem
 
 
 def test_drop_on_a_decoder_stacks_there_when_it_fits(window):
@@ -976,6 +1259,81 @@ def test_cursor_lines_and_flags_can_be_dragged_through_the_overlay(window):
     window.hide()
 
 
+def analog_ramp(window):
+    window.resize(1400, 900)
+    window.show()
+    window.waves = {1: Waveform(1, np.linspace(0, 3, 1000, dtype=np.float32), 3e-6, 1e-3)}
+    window.new_decoder("UART")
+    window.display_mode.setCurrentIndex(window.display_mode.findData("analog"))
+    window._plot()
+    window.zoom_fit()
+    for _ in range(10):
+        QtWidgets.QApplication.processEvents()
+
+
+def test_analog_samples_get_dots_only_where_they_can_be_told_apart(window):
+    analog_ramp(window)
+    dots, wave = window.sample_dots[1]
+    assert len(dots.data) == 0  # 1000 samples are too dense for the row's width
+    window.master.setXRange(wave.t0 + 9.5 * wave.dt, wave.t0 + 40.5 * wave.dt, padding=0)
+    assert list(dots.data["x"]) == pytest.approx(list(wave.t0 + np.arange(10, 41) * wave.dt))
+    assert list(dots.data["y"]) == pytest.approx(list(wave.volts[10:41]))
+    window.master.setXRange(wave.t0 + 899.5 * wave.dt, wave.t0 + 930.5 * wave.dt, padding=0)  # they follow the view
+    assert dots.data["x"][0] == pytest.approx(wave.t0 + 900 * wave.dt)
+    window.zoom_fit()
+    assert len(dots.data) == 0
+    window.grab()
+    window.display_mode.setCurrentIndex(window.display_mode.findData("logic"))
+    assert window.sample_dots == {}
+    window.hide()
+
+
+def test_a_dragged_cursor_is_drawn_to_a_close_sample_only_in_the_analog_view(window):
+    analog_ramp(window)
+    _dots, wave = window.sample_dots[1]
+    window.cursors_button.setChecked(True)
+    window.master.setXRange(wave.t0 + 10 * wave.dt, wave.t0 + 40 * wave.dt, padding=0)
+    for _ in range(10):
+        QtWidgets.QApplication.processEvents()
+    sample = wave.t0 + 20 * wave.dt
+    pixels = wave.dt * window._pixels_per_second()
+    assert pixels > 16  # the full reach applies
+    window._drag_cursor(0, window._scene_x(sample) + 2)
+    assert window.cursor_positions[0] == pytest.approx(sample)
+    assert [line.value() for line in window.cursor_lines[0]] == pytest.approx([sample] * len(window.plots))
+    row_y = window.channel_rows[1].vb.sceneBoundingRect().center().y()
+    view = window.graphics
+    later = wave.t0 + 30 * wave.dt
+    drag(view, view.mapFromScene(QtCore.QPointF(window._scene_x(sample), row_y)),
+         view.mapFromScene(QtCore.QPointF(window._scene_x(later) + 2, row_y)))
+    assert window.cursor_positions[0] == pytest.approx(later)
+    assert [line.value() for line in window.cursor_lines[0]] == pytest.approx([later] * len(window.plots))
+    between = sample + wave.dt / 2
+    window._drag_cursor(0, window._scene_x(between))
+    assert window.cursor_positions[0] == pytest.approx(between, abs=wave.dt / pixels)
+    window.display_mode.setCurrentIndex(window.display_mode.findData("logic"))
+    window.master.setXRange(wave.t0 + 10 * wave.dt, wave.t0 + 40 * wave.dt, padding=0)
+    window._drag_cursor(0, window._scene_x(sample) + 2)
+    assert window.cursor_positions[0] != pytest.approx(sample, abs=wave.dt / pixels)
+    window.cursors_button.setChecked(False)
+    window.hide()
+
+
+def test_samples_in_view_and_the_reach_of_a_sample():
+    from mhodecode.cursors import sample_near, samples_in_view
+    assert samples_in_view(0.0, 1.0, 10, 2.5, 5.5) == (3, 6)
+    assert samples_in_view(0.0, 1.0, 10, -5.0, 100.0) == (0, 10)
+    assert samples_in_view(0.0, 1.0, 10, 20.0, 30.0)[0] == samples_in_view(0.0, 1.0, 10, 20.0, 30.0)[1]
+    assert samples_in_view(0.0, 1.0, 10, 2.2, 2.8)[0] == samples_in_view(0.0, 1.0, 10, 2.2, 2.8)[1]
+    assert sample_near(3.09, 0.0, 1.0, 10, 40.0) == 3.0  # under 4 pixels away, at 40 pixels between samples
+    assert sample_near(3.11, 0.0, 1.0, 10, 40.0) is None
+    assert sample_near(3.2, 0.0, 1.0, 10, 8.0) == 3.0
+    assert sample_near(3.3, 0.0, 1.0, 10, 8.0) is None  # dense samples reach less: 2 of 8 pixels
+    assert sample_near(3.2, 0.0, 1.0, 10, 5.0) is None  # no dots, so nothing draws it
+    assert sample_near(3.0, 0.0, 1.0, 10, 5.0) is None
+    assert sample_near(12.0, 0.0, 1.0, 10, 40.0) is None  # past the last sample
+
+
 def test_flags_of_close_cursors_stand_side_by_side():
     from mhodecode.cursors import flag_centers
     assert flag_centers((100.0, 200.0), 10.0) == (100.0, 200.0)
@@ -1198,10 +1556,11 @@ def test_signal_rows_offer_digital_channels_and_hide_the_threshold(window):
     assert not row.auto.isHidden()
 
 
-def test_wide_bus_defaults_run_on_to_digital_channels(window):
+def test_wide_bus_runs_on_to_digital_channels_only_if_they_are_chosen(window):
+    window.scope_settings.choose({1, 2, 3, 4, DIGITAL[0]})
     use(window, SIGROK_ROOTS["lpc"].name)
     required = [row.channel.currentText() for row in active(window).signal_rows if row.spec.required]
-    assert required[:6] == ["CH1", "CH2", "CH3", "CH4", "D0", "D1"]
+    assert required == ["CH1", "CH2", "CH3", "CH4", "D0", "—"]
 
 
 def test_digital_channel_decodes_and_is_drawn(window):
@@ -1284,9 +1643,118 @@ def test_reply_updates_the_widget_without_sending(window):
         panel._value_received(":TRIGger:MODE?", "IIC")
         assert panel.trigger_mode.currentData() == "IIC" and panel.trigger_pages.currentIndex() == 2
         panel._value_received(":TRIGger:STATus?", "T'D")
-        assert panel.state_label.text() == i18n.tr("Triggered")
+        assert panel.status().state == i18n.tr("Triggered")
         assert link.sent == []
     finally:
+        panel.link = None
+
+
+def test_holdoff_is_sent_from_the_trigger_settings(window):
+    panel = window.panel
+    panel.link = link = RecordingLink()
+    try:
+        panel.settings["holdoff"].set_value(430e-6)
+        assert link.sent == [":TRIGger:HOLDoff 0.00043"]
+    finally:
+        panel.link = None
+
+
+def test_holdoff_can_only_be_set_for_a_trigger_type_that_has_it(window):
+    panel = window.panel
+    for name, enabled in (("SPI", False), ("EDGE", True)):
+        panel.trigger_mode.setCurrentIndex(panel.trigger_mode.findData(name))
+        panel._refresh_trigger_form()
+        assert panel.holdoff.isEnabledTo(panel.controls) == enabled
+
+
+@pytest.mark.parametrize("mode, holdoff, shown", [("EDGE", "4.300000E-4", True), ("EDGE", "8.000000E-9", False), ("SPI", "4.300000E-4", False)])
+def test_the_status_line_tells_when_a_holdoff_is_in_effect(window, mode, holdoff, shown):
+    panel = window.panel
+    panel.link = RecordingLink()
+    try:
+        panel._value_received(":TRIGger:MODE?", mode)
+        panel._value_received(":TRIGger:HOLDoff?", holdoff)
+        expected = i18n.tr("Holdoff enabled: {time}", time="430 µs") if shown else ""
+        assert panel.status().holdoff == expected
+        assert window.scope_status.labels["holdoff"].text() == expected
+    finally:
+        panel._value_received(":TRIGger:MODE?", "EDGE")
+        panel._value_received(":TRIGger:HOLDoff?", "8.000000E-9")
+        panel.link = None
+
+
+def test_the_status_line_has_its_own_row_under_the_connection(window):
+    connection = window.findChild(QtWidgets.QToolBar, "device_bar")
+    assert window.toolBarArea(window.scope_status) == QtCore.Qt.TopToolBarArea
+    assert window.toolBarArea(connection) == QtCore.Qt.TopToolBarArea
+    assert window.toolBarBreak(window.scope_status)
+
+
+def test_a_window_layout_saved_before_the_status_row_is_ignored(window):
+    state = window.saveState()  # version 0, as every layout saved until now
+    other = MainWindow()
+    assert not other.restoreState(state, WINDOW_LAYOUT_VERSION)
+    assert other.toolBarBreak(other.scope_status)
+    other.close()
+
+
+def test_a_window_layout_saved_now_comes_back(window):
+    window.close()
+    other = MainWindow()
+    assert other.settings.value("window_state") is not None
+    assert other.restoreState(other.settings.value("window_state"), WINDOW_LAYOUT_VERSION)
+    other.close()
+
+
+def test_the_status_line_stays_out_of_the_overflow_of_its_tool_bar(window):
+    line = window.scope_status.labels["state"].parentWidget()
+    window.panel.link = RecordingLink()
+    try:
+        window.scope_status.show_status(ScopeStatus(state="Triggered", trigger="Trigger: " + "x" * 500))
+        assert line.sizeHint().width() == 0 and line.minimumSizeHint().width() == 0
+    finally:
+        window.panel.link = None
+        window.scope_status.show_status(window.panel.status())
+
+
+def test_the_status_line_shows_only_what_was_read(window):
+    panel = window.panel
+    assert panel.status() == ScopeStatus(state=i18n.tr("Not connected"))
+    panel.link = RecordingLink()
+    panel.read_queries = set()
+    try:
+        assert panel.status().time_base == "" and panel.status().depth == "" and panel.status().trigger == ""
+        panel._value_received(":TIMebase:MAIN:SCALe?", "2.000000E-5")
+        panel._value_received(":CHANnel3:DISPlay?", "1")
+        panel._value_received(":ACQuire:SRATe?", "1.0000E+09")
+        panel._value_received(":TRIGger:STATus?", "WAIT")
+        panel._value_received(":TRIGger:EDGE:SOURce?", "CHAN3")
+        status = panel.status()
+        assert status.time_base == panel.time_scale.currentText() and "20" in status.time_base
+        assert "CH3" in status.channels and status.rate == "1000 MSa/s" and status.state == i18n.tr("Waiting for trigger")
+        assert "CH3" in status.trigger
+    finally:
+        panel._value_received(":CHANnel3:DISPlay?", "0")
+        panel.link = None
+
+
+def test_the_status_is_read_also_with_the_tab_hidden():
+    link = LiveLink(None)
+    link.status_queries = [":TRIGger:STATus?", ":TRIGger:HOLDoff?"]
+    assert link._next_queries() == link.status_queries  # no tab on screen, and nothing else asked for
+    assert link._next_queries() == []  # not again until its time comes
+
+
+def test_the_status_line_says_a_job_has_the_link(window):
+    panel = window.panel
+    panel.link = RecordingLink()
+    panel.link.busy = False
+    panel.link.read_all_once = lambda: None
+    try:
+        panel.set_job_running(True)
+        assert panel.status().state == i18n.tr("Busy")
+    finally:
+        panel.set_job_running(False)
         panel.link = None
 
 
@@ -1686,7 +2154,9 @@ def test_a_channel_of_a_decoder_is_read_and_cannot_be_unticked(window):
     picker = window.scope_settings
     picker.choose(())
     card = window.new_decoder("UART")
-    channel = next(iter(card.mapping().values()))
+    assert card.mapping() == {}  # nothing is chosen, so it takes nothing
+    channel = 2
+    card.signal_rows[0].channel.setCurrentIndex(card.signal_rows[0].channel.findData(channel))
     assert channel in window._used_channels() and channel in picker.selected()
     assert picker.boxes[channel].isChecked() and not picker.boxes[channel].isEnabled()
     window.remove_decoder(card)

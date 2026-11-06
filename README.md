@@ -1,4 +1,4 @@
-# MHO900 Protocol Decoder
+# MHO900 Logic Analyzer
 
 English | [Polski](README.pl.md)
 
@@ -18,11 +18,18 @@ If the program ends with an error, the console window stays open and shows it.
 
 1. Enter the IP address and click **Connect**.
 2. Drag a decoder from the tree and assign its signals to channels CH1–CH4 or D0–D15. Further decoders are added the same
-   way, including the same decoder several times on other channels with other settings.
+   way, including the same decoder several times on other channels with other settings. A new decoder takes only the channels in use:
+   signals beyond them stay empty until you assign them, and no further channel is turned on.
 3. Click the label of a decoder lane or choose **Decoder settings** from the right-click menu: a window opens where you set
    the channels and the protocol parameters. Decoding starts by itself after every change of a waveform, channel or option,
-   so there is no decode button.
-4. Click **Autoscale** to fit the vertical scale and the trigger level.
+   so there is no decode button. A new decoder's signals start on the channels in use: those that showed a signal in the last data, then those
+   on on the scope, then those chosen in the app. Channels no other decoder uses come first.
+4. Click **Autoscale** on the **Oscilloscope** tab, where the live view shows the result, to run the scope's own Auto on the analog channels chosen in the app, which are turned on for it while the others
+   are turned off. It fits each channel to the signal on that channel and sets the trigger. The program then reads a record and sets the time
+   base so that one whole packet shows: a packet is a run of edges with a pause of over 20 typical edge spacings on both sides. If a record holds
+   no whole packet, or a chosen channel has no edge in it, the time base is widened, up to 100 ms/div, and a signal without packets keeps the time base Auto gave it.
+   The trigger holdoff is set to the packet plus half of that pause, so the scope does not trigger again inside a packet. The channels Auto
+   leaves on become the chosen ones.
 5. On the **Oscilloscope** tab choose the memory depth, the time base (a list from 500 ps/div to 500 s/div in 1-2-5 steps)
    and the trigger, watching the effect in the live view, then click **Run**.
    The **Read memory** button decodes what is already in the scope's memory, and the **Repeat** box runs acquisitions one
@@ -81,10 +88,11 @@ a decoder and single rows, and a decoder lane visible right after adding it. Not
 color, dragging lanes into another order, pausing decoding, and the menu for copying and exporting annotations from a lane.
 Settings open in a separate window rather than a popup.
 
-- **Toolbar at the top:** connection, **Scope settings**, **Run** (F5), and in its place while working **Abort** (Esc), the
-  **Repeat** box, memory read and Autoscale set apart, zoom, the **Logic/Analog** view and **Cursors**. Manual RUN, STOP, SINGLE
-  and FORCE are only on the Oscilloscope tab.
-- **Scope settings:** a toolbar menu with channels CH1–CH4 and D0–D15, memory depth, time base, trigger, read format, forcing DC
+- **Toolbar at the top:** the connection only, with the scope's status line in the row below it. Each tab has its own controls.
+- **Waveforms tab:** **Scope settings**, **Run** (F5), and in its place while working **Abort** (Esc), the **Repeat** box, memory read
+  set apart, zoom, the **Logic/Analog** view and **Cursors**. The shortcuts of these controls work on this tab.
+- **Oscilloscope tab:** manual RUN, STOP, SINGLE and FORCE, and **Autoscale**, with **Abort** in its place while working.
+- **Scope settings:** a menu on the Waveforms tab with channels CH1–CH4 and D0–D15, memory depth, time base, trigger, read format, forcing DC
   and waiting for a trigger. The scope receives them only at an **Acquisition**: it turns ticked channels on and unticked ones
   off. **Read memory** sends none of this, it only stops the scope and reads. "No change" leaves what is on the scope, also after
   a change on the Oscilloscope tab, which works at once. Next to the digital channels are the thresholds of groups D0–D7 and
@@ -116,21 +124,24 @@ Settings open in a separate window rather than a popup.
   threshold and in the trigger. With no threshold, the trigger level is the middle of the signal from the last read, and with no read
   the level on the scope stays.
 - **Waveforms tab:** the mouse wheel zooms, and dragging or the scroll bar under the waveforms moves along the time axis. The **Logic** view shows states after the threshold,
-  and **Analog** shows voltages. Waveform rows are low, and decoder rows get the room. The vertical scale in the **Analog** view is fitted
+  and **Analog** shows voltages. Zoomed in far enough to tell the samples apart, **Analog** marks each one with a dot. Waveform rows are low, and decoder rows get the room. The vertical scale in the **Analog** view is fitted
   once, to the whole read, and does not change when the time scale does. Clicking the voltage axis lets you enter the top and bottom of
   the range or go back to the automatic scale, and an entered range stays for further reads. Cursors, as in PulseView, have flags A
   and B above the time axis and an arrow with the time and frequency between them, and the area between them is shaded. You drag the
-  lines or the flags. The status bar gives the positions of A and B. Annotation bars have the row's color for data and gray for the
+  lines or the flags. Where the **Analog** view shows dots, a cursor dragged close to a sample is drawn to it, and between samples it moves freely. The status bar gives the positions of A and B. Annotation bars have the row's color for data and gray for the
   control fields of a protocol (start, stop, ACK, address). The table marks them the same way. Text that does not fit on a bar in any
   form is left out. Clicking an annotation bar selects its row in the table, and clicking a row shows it on the waveform.
 - **Oscilloscope tab:** the scope's screen live, from the H.264 stream of the scope's web page, where the left mouse button acts like
   touch. The stream runs only while the tab is visible and the live view is ticked. The web page and this program push each other off
   this connection. Besides this: time base, memory depth, acquisition mode, channels CH1–CH4, digital channels and the trigger. Every
   change goes to the scope at once, and values are read continuously, so changes made on the scope itself show as well. A refused
-  command appears on the status bar.
+  command appears on the status bar. **Holdoff** in the trigger settings takes 8 ns, which means none, to 10 s, and works only with the Slope
+  trigger type, as the Programming Guide rules it out for the other types on the list.
+- **Scope status line:** in its own row under the connection, on every tab, and read once a second: the state of the acquisition, the channels on, time base, sample rate,
+  memory depth and the trigger. **Holdoff enabled** with its time appears there as long as a holdoff is in effect.
   The V/div list has 1-2-5 steps times the channel's probe ratio, from 1 mV × ratio to 10 V × ratio at the 1 MΩ input, and choosing from
   it turns off the channel's fine adjustment (`:CHANnel<n>:VERNier OFF`). The list shows a value between the steps set on the scope for
-  as long as it is set. Autoscale sets these steps too. The time offset is shown with an SI prefix and can be entered that way (`1.5 ms`,
+  as long as it is set. The time offset is shown with an SI prefix and can be entered that way (`1.5 ms`,
   `20 us`). Groups D0–D7 and D8–D15 turn the digital channels on and off themselves, with no separate box.
   The **Auto** depth shows in brackets the number of points the scope chose. The scope's reply gives a number of points in Auto too, so
   the program recognizes Auto by having set it itself, or by a number of points no fixed depth has. A fixed depth set on the scope
@@ -221,11 +232,15 @@ The **Generator** tab sends a signal, and receiving and comparing are in the **A
    protocol line to output AFG1 or AFG2 or skip it. For each output you set the low and high level and the load (High-Z or 50 Ω). The levels
    reach the output before it turns on, so a device does not see the amplitude from an earlier use.
 2. **Receive** runs an acquisition with the channels and decoder from the **Decoder** tab and the settings from the **Oscilloscope** tab.
-   The **Set the decoder and time base from the generator** button copies the protocol parameters, picks a time base and assigns the channel
-   with the output's number (AFG1 to CH1). Check this if the device replies on other channels.
+   The **Set the decoder and time base from the generator** button copies the protocol parameters and picks a time base. The channels and the
+   trigger source stay as they are, because the app does not know what the outputs are connected to.
 3. **Compare** looks in the decoded data for a complete copy with no errors: of the sent data or of what was entered as expected. On a mismatch
    it gives the first byte that differs. Comparing works for every decoder that gives binary data and for CAN, also when a device replies with
    another protocol.
+
+**AFG waveform files** in the **Advanced** menu has the same form and needs no connection. It writes one CSV file per line in use, named
+after the name you give and the line (`i2c_scl.csv`), and shows what to enter on the generator: load, file, frequency, amplitude, offset and,
+for two lines, Align Phase.
 
 The generator handles UART, I2C, SPI, CAN and CAN FD. I2S needs 3 lines, and the instrument has 2 outputs.
 
@@ -251,15 +266,15 @@ Limits of the AFG outputs:
 The tests below need AFG1 connected to CH1 and AFG2 to CH2:
 
 ```powershell
-.venv\Scripts\python.exe tests\live_scope.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_scope.py SCOPE_IP
 ```
 
 ```powershell
-.venv\Scripts\python.exe tests\live_crosscheck.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_crosscheck.py SCOPE_IP
 ```
 
 ```powershell
-.venv\Scripts\python.exe tests\live_sigrok.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_sigrok.py SCOPE_IP
 ```
 
 Agreement with the real libsigrokdecode is checked on its test cases, after cloning the repositories

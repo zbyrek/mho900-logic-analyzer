@@ -192,8 +192,7 @@ class SignalRow:
         self.widgets = [QtWidgets.QLabel(label)]
         self.channel = QtWidgets.QComboBox()
         compact(self.channel)
-        if not spec.required:
-            self.channel.addItem("—", None)
+        self.channel.addItem("—", None)  # also for a required signal: there may be no channel for it yet
         for channel in CHANNELS:
             self.channel.addItem(f"CH{channel}", channel)
         for number in range(DIGITAL_CHANNELS):

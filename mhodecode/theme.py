@@ -21,8 +21,8 @@ class Theme:
     cursor_text: str  # the letter on a cursor's flag
     control_bar: str  # annotations of protocol fields, as against the data
     control_text: str
-    channels: dict
-    digital: tuple  # colours of D0, D1, ... used in turn, in the order of the resistor colour code
+    channels: dict  # as on the scope's screen; the light theme darkens them, because pure yellow cannot be read on white
+    digital: str  # the scope draws all digital channels in one colour
     rows: tuple  # colours of annotation rows, used in turn
     palette: dict | None  # QPalette roles; None keeps the style's own light palette
     disabled_text: str = ""
@@ -42,8 +42,8 @@ THEMES = {
         error_bar="#f19a9a", error_text="#c0281e", warning_text="#a86400", ok_text="#1e8449",
         accent="#2467b5", accent_text="#ffffff", cursor="#c2006a", cursor_text="#ffffff",
         control_bar="#d9dce1", control_text="#5c626a",
-        channels={1: "#a87a00", 2: "#0b7a99", 3: "#ab2f98", 4: "#1b8a43"},
-        digital=("#3a3f46", "#8a5a2b", "#c0281e", "#c8661a", "#a88a00", "#1e8449", "#2467b5", "#7a3fb0", "#6e7379", "#111418"),
+        channels={1: "#a3a300", 2: "#008f8f", 3: "#b800b8", 4: "#0066cc"},
+        digital="#028a02",
         rows=("#a9cdf2", "#a8e0b6", "#f6d58f", "#d6bdf3", "#f4b8c9", "#a7e3e0"),
         palette=None),
     "dark": Theme(
@@ -51,8 +51,8 @@ THEMES = {
         error_bar="#c23b3b", error_text="#ff7b72", warning_text="#f0b94a", ok_text="#5fd38a",
         accent="#2f6db3", accent_text="#ffffff", cursor="#ff5fae", cursor_text="#15181d",
         control_bar="#454a52", control_text="#a4a9b0",
-        channels={1: "#f4d03f", 2: "#4fd1e8", 3: "#e88ad8", 4: "#6fdc8c"},
-        digital=("#c8ccd2", "#c08a55", "#ff6b60", "#ff9d4d", "#f0d04a", "#5fd38a", "#6cb2f0", "#b58cf0", "#9aa0a7", "#ffffff"),
+        channels={1: "#ffff00", 2: "#00ffff", 3: "#ff00ff", 4: "#007fff"},
+        digital="#04c304",
         rows=("#2f6db3", "#2c8a55", "#a8741a", "#7450b5", "#ad4468", "#22868a"),
         palette=DARK_PALETTE, disabled_text="#7a7e85"),
 }

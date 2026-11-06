@@ -46,10 +46,6 @@ AFG_LOAD_SETTLE_S = 1.0
 CLIP_CODES = {"WORD": (500, 65000), "BYTE": (1, 253)}
 SAMPLE_TYPES = {"WORD": "<u2", "BYTE": "u1"}
 DEFAULT_FORMAT = "BYTE"
-AUTOSCALE_DEPTH = 100_000
-AUTOSCALE_START_V_PER_DIV = 5.0
-AUTOSCALE_MIN_SWING_V = 0.1
-AUTOSCALE_DIVISIONS = 6
 # At a probe ratio of 1: 1 mV/div to 10 V/div with 1 MOhm input, from the Programming Guide. Each step times the ratio
 # came back as sent for ratios from 0.1 to 100 (measured, firmware 00.01.00).
 VERTICAL_STEPS = tuple(mantissa * 10.0 ** power for power in range(-3, 1) for mantissa in (1, 2, 5)) + (10.0,)
@@ -81,18 +77,17 @@ def vertical_scales(probe: float) -> list[float]:
     return [float(f"{step * probe:.6g}") for step in VERTICAL_STEPS]
 
 
-def standard_scale(volts_per_div: float, probe: float) -> float:
-    """The smallest step that shows at least this much per division, else the largest one."""
-    scales = vertical_scales(probe)
-    return next((scale for scale in scales if scale >= volts_per_div), scales[-1])
-
-
 def format_si(value: float, unit: str) -> str:
     """1.2112e-3 and "s" give "1.2112 ms"."""
     if value == 0:
         return f"0 {unit}"
     factor, prefix = next((entry for entry in SI_PREFIXES if abs(value) >= entry[0]), SI_PREFIXES[-1])
     return f"{value / factor:.6g} {prefix}{unit}"
+
+
+def record_file(values: np.ndarray) -> bytes:
+    """An AFG record as the scope loads it: a CSV file of one column."""
+    return ("\r\n".join(f"{v:.6g}" for v in values) + "\r\n").encode("ascii")
 
 
 class ScopeError(RuntimeError):
@@ -157,6 +152,10 @@ class Waveform:
         return auto_thresholds(self.volts, self.min_swing) is not None
 
 
+# The range of :TRIGger:HOLDoff; a value past it is set to its end without an error (measured). The lowest value is the
+# scope's default, and also what its Auto leaves (measured), so it stands for no holdoff.
+HOLDOFF_MIN_S = 8e-9
+HOLDOFF_MAX_S = 10.0
 PRETRIGGER_TOLERANCE = 0.005  # of the memory's length: half a percent of the choice's whole-percent step
 
 
@@ -365,6 +364,9 @@ class Scope:
     def set_time_scale(self, seconds_per_div: float) -> None:
         self.write(f":TIMebase:MAIN:SCALe {seconds_per_div:g}")
 
+    def set_holdoff(self, seconds: float) -> None:
+        self.write(f":TRIGger:HOLDoff {seconds:.6g}")
+
     def set_edge_trigger(self, channel: int, level: float, slope: str = "POSitive") -> None:
         self.write(":TRIGger:MODE EDGE")
         self.write(f":TRIGger:EDGE:SOURce CHANnel{channel}")
@@ -531,39 +533,27 @@ class Scope:
         """The scope's screen as PNG: 81 kB in 0.26 s, against 235 kB in 0.19 s as lossy JPG."""
         return bytes(self.query_block(":DISPlay:DATA? PNG", timeout=20.0))
 
-    def autoscale(self, channels: list[int], trigger_channel: int | None = None, slope: str = "POSitive", auto_depth: bool = False) -> dict:
-        """Fit each channel to the screen on the standard steps; returns channel -> (low, high) in volts.
-        auto_depth: the memory depth is on Auto, which its reply cannot tell, so Auto is what is set back."""
-        levels: dict[int, tuple[float, float]] = {}
-        # The trigger level comes from the channel's levels, so it is measured even if unused.
-        channels = sorted(set(channels) | ({trigger_channel} if trigger_channel else set()))
-        for channel in channels:
+    def autoscale(self, channels: set[int]) -> set[int]:
+        """The scope's own AUTO on these analog channels, which it tests when they are on and only then: it fits each to
+        its signal and sets the time base and the trigger. *OPC? answers once it has finished (measured, firmware 00.01.00).
+        Returns the analog channels left on."""
+        if self.query(":AUToset:LOCK?") == "1":  # the Programming Guide: the command is then invalid
+            raise ScopeError(tr("The AUTO function is locked on the scope."))
+        self.errors()  # what is left in the queue is not this command's doing
+        analog = range(1, ANALOG_CHANNELS + 1)
+        for channel in sorted(channels):  # on first: the scope must not pass through no channel at all
             self.set_channel(channel, True)
-            self.set_dc_coupling(channel)
-        depth_before = self.query(":ACQuire:MDEPth?")
-        self.set_memory_depth(AUTOSCALE_DEPTH)
-        probes = {channel: self.query_float(f":CHANnel{channel}:PROBe?") for channel in channels}
-        for channel in channels:
-            self.write(f":CHANnel{channel}:VERNier OFF")
-        for measured in (False, True):
-            for channel in channels:
-                if not measured:
-                    self.set_vertical(channel, AUTOSCALE_START_V_PER_DIV * probes[channel], 0.0)
-                else:
-                    low, high = levels[channel]
-                    swing = max(high - low, AUTOSCALE_MIN_SWING_V)
-                    self.set_vertical(channel, standard_scale(swing / AUTOSCALE_DIVISIONS, probes[channel]), -(high + low) / 2)
-            abort.sleep(0.3)
-            self.single(force_after=0.5)
-            for channel in channels:
-                volts = self.fetch(channel, AUTOSCALE_DEPTH).volts
-                levels[channel] = (float(np.percentile(volts, 0.1)), float(np.percentile(volts, 99.9)))
-        if trigger_channel is not None:
-            low, high = levels[trigger_channel]
-            self.set_edge_trigger(trigger_channel, (low + high) / 2, slope)
-        self.set_memory_depth("AUTO" if auto_depth else int(float(depth_before)))
-        self.run()
-        return levels
+        for channel in analog:
+            if channel not in channels:
+                self.set_channel(channel, False)
+        self.write(":AUToset:OPENch ON")
+        self.write(":AUToset")
+        self.query("*OPC?")
+        # With no signal on any channel tested, it answers -200 and the trigger source stays (measured, firmware 00.01.00).
+        refused = self.errors()
+        if refused:
+            raise ScopeError(tr("The scope's Auto did not run: {errors}. Check that the chosen channels have a signal.", errors="; ".join(refused)))
+        return {channel for channel in analog if self.channel_enabled(channel)}
 
     # ---- digital channels and memory files -------------------------------
     def enable_digital(self) -> None:
@@ -674,13 +664,13 @@ class Scope:
 
     def afg_upload(self, name: str, values: np.ndarray) -> str:
         """Store values as a one-column CSV on the scope; return its path there."""
-        text = "\r\n".join(f"{v:.6g}" for v in values) + "\r\n"
-        self._note(f"FTP STOR {ARB_FTP_DIR}/{name}, {len(text):,} B")
+        content = record_file(values)
+        self._note(f"FTP STOR {ARB_FTP_DIR}/{name}, {len(content):,} B")
         try:
             with ftplib.FTP() as ftp:
                 ftp.connect(self.host, FTP_PORT, timeout=self.timeout)
                 ftp.login()
-                ftp.storbinary(f"STOR {ARB_FTP_DIR}/{name}", io.BytesIO(text.encode("ascii")))
+                ftp.storbinary(f"STOR {ARB_FTP_DIR}/{name}", io.BytesIO(content))
         except (OSError, ftplib.Error) as exc:
             raise ScopeError(tr("Error sending {name} over FTP: {error}", name=name, error=exc)) from exc
         return f"{ARB_SCOPE_DIR}/{name}"

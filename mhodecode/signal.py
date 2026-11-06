@@ -11,6 +11,10 @@ import numpy as np
 HYSTERESIS_FRACTION = 0.3
 # Swings below this are treated as a constant level (noise on an idle input).
 MIN_SWING_V = 0.02
+# A pause this many times the typical time between a line's edges ends a packet. Long enough for the longest run of
+# equal bits of a frame, which leaves pauses between frames shorter than this inside one packet.
+PACKET_PAUSE_FACTOR = 20
+MIN_PACKET_EDGES = 3  # fewer say nothing about a packet: one pulse looks the same
 
 
 @dataclass
@@ -113,6 +117,37 @@ def estimate_bit_time(traces: list[DigitalTrace]) -> float | None:
     usable = all_widths[all_widths <= shortest * 12]
     counts = np.maximum(np.round(usable / shortest), 1)
     return float(usable.sum() / counts.sum())
+
+
+@dataclass(frozen=True)
+class PacketSearch:
+    length: float | None  # seconds from first to last edge of the longest packet the record holds whole
+    cut: bool = False  # a run of edges reaches the end of the record, so a longer packet may go on past it
+    pause: float = 0.0  # seconds without an edge that end a packet
+
+
+def longest_packet(traces: list[DigitalTrace]) -> PacketSearch:
+    """A packet is a run of edges on any of the lines with a pause on both sides, and the record's ends count as pauses
+    when they are far enough away. The typical time comes from the fastest line by itself: edges of two lines close
+    together, as a clock's and its data's, would make it far too short if the lines were merged first."""
+    lines = [trace.t0 + np.asarray(trace.edges, dtype=np.float64) * trace.dt for trace in traces]
+    typical = [float(np.median(np.diff(line))) for line in lines if len(line) >= MIN_PACKET_EDGES]
+    if not typical:
+        return PacketSearch(None)
+    pause = PACKET_PAUSE_FACTOR * min(typical)
+    edges = np.sort(np.concatenate(lines))
+    breaks = np.flatnonzero(np.diff(edges) > pause)
+    first = np.concatenate(([0], breaks + 1))
+    last = np.concatenate((breaks, [len(edges) - 1]))
+    whole = last - first + 1 >= MIN_PACKET_EDGES
+    began_before = edges[0] - min(trace.t0 for trace in traces) < pause
+    goes_on_after = max(trace.time(trace.length) for trace in traces) - edges[-1] < pause
+    if began_before:
+        whole[0] = False
+    if goes_on_after:
+        whole[-1] = False
+    length = float((edges[last[whole]] - edges[first[whole]]).max()) if whole.any() else None
+    return PacketSearch(length, bool(began_before or goes_on_after), pause)
 
 
 def snap_to_standard(rate: float, standard: tuple[int, ...], tolerance: float = 0.03) -> float:

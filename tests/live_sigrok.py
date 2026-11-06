@@ -3,7 +3,7 @@
 Every case plays a bus signal, captures it on the analog channels and needs the sent data back
 from a sigrok decoder, alone or with another decoder stacked on it.
 
-Usage: python tests/live_sigrok.py [ip] [case-filter]
+Usage: python tests/live_sigrok.py <ip> [case-filter]
 """
 from __future__ import annotations
 
@@ -142,7 +142,9 @@ CASES = [
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
-    host = sys.argv[1] if len(sys.argv) > 1 else "192.0.2.1"
+    if len(sys.argv) < 2:
+        sys.exit("Usage: python tests/live_sigrok.py <ip> [case-filter]")
+    host = sys.argv[1]
     scope = Scope(host)
     print(scope.connect())
     failures = 0

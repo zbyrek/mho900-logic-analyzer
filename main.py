@@ -26,15 +26,25 @@ def run_selftest(window, app, host: str, output: Path) -> None:
 
     def set_generator(protocol, data_format, data, **params):
         window.remove_all_decoders()
-        window.gen_protocol.setCurrentText(protocol)
-        window.gen_data_format.setCurrentIndex(window.gen_data_format.findData(data_format))
-        window.gen_data.setText(data)
+        window.gen_form.protocol.setCurrentText(protocol)
+        window.gen_form.data_format.setCurrentIndex(window.gen_form.data_format.findData(data_format))
+        window.gen_form.data.setText(data)
         for key, value in params.items():
-            widget = window.gen_param_widgets[key]
+            widget = window.gen_form.param_widgets[key]
             if hasattr(widget, "findData"):
                 widget.setCurrentIndex(widget.findData(value))
             else:
                 widget.setValue(value)
+
+    def match_on_bench():
+        """The app leaves the channels to the user, so this run sets them for its own cabling: AFGn on CHn."""
+        window._match_decoder()
+        generated = window.generated or window.gen_form.build()
+        channels = {key: afg for afg, key in generated.outputs.items()}
+        for row in window.active_card.signal_rows:
+            channel = channels.get(generated.signals.get(row.spec.key))
+            row.channel.setCurrentIndex(max(0, row.channel.findData(channel)))
+        window.panel.edge_setting("SOURce").set_value(f"CHANnel{max(generated.outputs)}")
 
     def compare_step(name):
         def step():
@@ -46,7 +56,7 @@ def run_selftest(window, app, host: str, output: Path) -> None:
         return [
             lambda: set_generator(protocol, data_format, data, **params),
             window._generate,
-            window._match_decoder,
+            match_on_bench,
             window._autoscale,
             window._acquire,
             compare_step(name),
@@ -56,9 +66,9 @@ def run_selftest(window, app, host: str, output: Path) -> None:
         # The line goes out on AFG2 while AFG1 stays off, proving the output choice is honoured.
         def choose():
             set_generator("UART", "ascii", "swap\\n", rate=115200)
-            combo = window.gen_line_combos["tx"]
+            combo = window.gen_form.line_combos["tx"]
             combo.setCurrentIndex(combo.findData(2))
-        return [choose, window._generate, window._match_decoder, window._autoscale, window._acquire,
+        return [choose, window._generate, match_on_bench, window._autoscale, window._acquire,
                 compare_step("UART on AFG2")]
 
     def set_digital_groups(on):
@@ -87,7 +97,7 @@ def run_selftest(window, app, host: str, output: Path) -> None:
                                                        for item in window.model.rows)))
             window.row_filter.setCurrentIndex(0)
 
-        return [lambda: set_generator(protocol, "hex", data, **params), window._generate, window._match_decoder,
+        return [lambda: set_generator(protocol, "hex", data, **params), window._generate, match_on_bench,
                 choose, window._autoscale, window._acquire, check]
 
     def browser_shot():
@@ -114,7 +124,7 @@ def run_selftest(window, app, host: str, output: Path) -> None:
             outcomes.append((name, bool(window.last_compare_ok)))
             window.grab().save(str(output / f"selftest_digital_{scl}_{sda}.png"))
 
-        return [choose, window._generate, window._match_decoder, window._autoscale, assign, window._acquire, check]
+        return [choose, window._generate, match_on_bench, window._autoscale, assign, window._acquire, check]
 
     def uart_trigger_steps():
         """The protocol trigger set in the scope tab: fires on the byte sent, not on another."""
@@ -144,7 +154,7 @@ def run_selftest(window, app, host: str, output: Path) -> None:
             window.panel.settings["sweep"].set_value("AUTO")
             window.panel.settings["trigger_mode"].set_value("EDGE")
 
-        return [choose, window._generate, window._match_decoder, window._autoscale,
+        return [choose, window._generate, match_on_bench, window._autoscale,
                 set_trigger(0xA5), window._acquire, outcome("UART trigger fires on A5", True),
                 set_trigger(0x77), window._acquire, outcome("UART trigger silent on 77", False), restore]
 
@@ -296,7 +306,7 @@ def run_selftest(window, app, host: str, output: Path) -> None:
             window.remove_decoder(checks["cards"][1])
             outcomes.append(("removing one decoder keeps the others", len(window.cards) == 3))
 
-        return [choose_i2c, window._generate, window._match_decoder, window._autoscale, enable_digital, add_others,
+        return [choose_i2c, window._generate, match_on_bench, window._autoscale, enable_digital, add_others,
                 window._acquire, check_all, check_interactive]
 
     def choose_i2c():
@@ -428,7 +438,7 @@ def enable_dpi_scaling() -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MHO900 protocol decoder")
+    parser = argparse.ArgumentParser(description="MHO900 Logic Analyzer")
     parser.add_argument("--selftest", metavar="HOST", help="go through the window's functions on the AFG loop-back and exit")
     parser.add_argument("--output", default=".", help="folder for the self-test log and screenshots")
     args = parser.parse_args()
