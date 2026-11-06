@@ -291,6 +291,20 @@ names from the `parts.py` table, which the reference files leave out.
 `main.py --selftest ADDRESS --output FOLDER` goes through all functions in the program's window, saves a log and screenshots, and ends with
 code 0 only when all of them worked.
 
+## Releases
+
+Pushing a tag such as `v2.0.0` starts `.github/workflows/release.yml`. It checks that the tag matches `__version__` in
+`mhodecode/__init__.py`, runs `build.ps1` (the tests, then the exe) and publishes `MHO900LogicAnalyzer.exe` as a release. If a step fails,
+nothing is published.
+
+```powershell
+git tag v2.0.0
+```
+
+```powershell
+git push origin v2.0.0
+```
+
 ## Translations
 
 The source strings in the code are in English. Polish is the catalogue `mhodecode/i18n_pl.py` (English source string -> Polish); a test

@@ -293,6 +293,20 @@ tylko nazw układów z tabeli `parts.py`, które pliki wzorcowe pomijają.
 `main.py --selftest ADRES --output FOLDER` przechodzi przez okno programu wszystkie funkcje,
 zapisuje log i zrzuty ekranu oraz kończy się kodem 0 tylko wtedy, gdy wszystkie zadziałały.
 
+## Wydania
+
+Wypchnięcie taga takiego jak `v2.0.0` uruchamia `.github/workflows/release.yml`. Sprawdza on, czy tag zgadza się z `__version__`
+w `mhodecode/__init__.py`, uruchamia `build.ps1` (testy, potem exe) i publikuje `MHO900LogicAnalyzer.exe` jako wydanie. Gdy któryś krok się
+nie powiedzie, nic nie zostaje opublikowane.
+
+```powershell
+git tag v2.0.0
+```
+
+```powershell
+git push origin v2.0.0
+```
+
 ## Licencja
 
 Dekodery w `mhodecode/srd_decoders` pochodzą z projektu [libsigrokdecode](https://github.com/sigrokproject/libsigrokdecode)
