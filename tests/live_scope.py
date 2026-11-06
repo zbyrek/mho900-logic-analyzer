@@ -4,7 +4,7 @@ Every case plays a bus signal from the AFG, captures it on the analog channels a
 checks that the decoder returns exactly what was sent. A pass needs the sent
 sequence to appear complete and error-free in the decoded stream.
 
-Usage: python tests/live_scope.py [ip] [case-filter]
+Usage: python tests/live_scope.py <ip> [case-filter]
 """
 from __future__ import annotations
 
@@ -227,7 +227,9 @@ CASES = [
 
 
 def main() -> int:
-    host = sys.argv[1] if len(sys.argv) > 1 else "192.0.2.1"
+    if len(sys.argv) < 2:
+        sys.exit("Usage: python tests/live_scope.py <ip> [case-filter]")
+    host = sys.argv[1]
     pattern = sys.argv[2].lower() if len(sys.argv) > 2 else ""
     scope = Scope(host)
     print(scope.connect())

@@ -242,6 +242,16 @@ def test_the_scope_tab_buttons_do_not_widen_the_window(window):
     assert left.minimumSizeHint().width() <= window.panel.screen_view.minimumWidth()
 
 
+def test_connecting_without_an_address_asks_for_one(window, monkeypatch):
+    from mhodecode.gui import DEFAULT_HOST
+    assert DEFAULT_HOST == ""
+    logged = []
+    monkeypatch.setattr(window, "_log", logged.append)
+    window.host.setText("  ")
+    window._toggle_connection()
+    assert window.scope is None and logged == ["Enter the scope's IP address."]
+
+
 def test_buttons_needing_a_scope_start_off_without_a_connection(window):
     assert window.scope is None
     assert not window.single_button.isEnabled() and not window.panel.autoscale_button.isEnabled() and not window.gen_button.isEnabled()

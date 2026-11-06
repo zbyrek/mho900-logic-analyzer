@@ -266,15 +266,15 @@ Limits of the AFG outputs:
 The tests below need AFG1 connected to CH1 and AFG2 to CH2:
 
 ```powershell
-.venv\Scripts\python.exe tests\live_scope.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_scope.py SCOPE_IP
 ```
 
 ```powershell
-.venv\Scripts\python.exe tests\live_crosscheck.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_crosscheck.py SCOPE_IP
 ```
 
 ```powershell
-.venv\Scripts\python.exe tests\live_sigrok.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_sigrok.py SCOPE_IP
 ```
 
 Agreement with the real libsigrokdecode is checked on its test cases, after cloning the repositories

@@ -6,7 +6,7 @@ instrument's decoder and both event lists are printed for comparison. CAN FD fra
 cover payloads that end the stuffed part on a run of five equal bits, where the fixed stuff
 bit stands in for the dynamic one, and the two decoders must agree on those.
 
-Usage: python tests/live_crosscheck.py [ip]
+Usage: python tests/live_crosscheck.py <ip>
 """
 from __future__ import annotations
 
@@ -67,7 +67,9 @@ CASES = {
 
 
 def main() -> int:
-    scope = Scope(sys.argv[1] if len(sys.argv) > 1 else "192.0.2.1", timeout=8)
+    if len(sys.argv) < 2:
+        sys.exit("Usage: python tests/live_crosscheck.py <ip>")
+    scope = Scope(sys.argv[1], timeout=8)
     print(scope.connect())
     try:
         for name, (make, decoder_name, mapping, params, commands) in CASES.items():

@@ -61,6 +61,7 @@ POLISH: dict[str, str] = {
     "AFG{afg}: the low level must be below the high level.": "AFG{afg}: poziom niski musi być mniejszy od wysokiego.",
     "7-bit address (hex)": "Adres 7-bit (hex)",
     "IP address:": "Adres IP:",
+    "Enter the scope's IP address.": "Wpisz adres IP oscyloskopu.",
     "CS active": "CS aktywny",
     "Acquisition": "Akwizycja",
     "Run": "Run",

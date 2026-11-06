@@ -31,7 +31,7 @@ from .signal import Thresholds, auto_thresholds, digitize, manual_thresholds
 from .srd_loader import base_chain
 from .theme import DEFAULT_THEME, THEMES, apply_palette, window_style
 
-DEFAULT_HOST = "192.0.2.1"
+DEFAULT_HOST = ""  # the address entered last is kept in the settings
 CHANNELS = (1, 2, 3, 4)
 FILE_FORMAT = "FILE"  # the read format that goes through the memory file instead of :WAVeform:DATA?
 DIGITAL_LEVELS = Thresholds(0.35, 0.65)  # digital samples are exactly 0 or 1
@@ -1080,6 +1080,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self._refresh_buttons()
             return
         host = self.host.text().strip()
+        if not host:
+            self._log(tr("Enter the scope's IP address."))
+            return
         self.settings.setValue("host", host)
 
         def job(_progress):

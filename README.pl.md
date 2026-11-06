@@ -268,15 +268,15 @@ Ograniczenia wyjść AFG:
 Poniższe testy wymagają połączenia AFG1 z CH1 i AFG2 z CH2:
 
 ```powershell
-.venv\Scripts\python.exe tests\live_scope.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_scope.py IP_OSCYLOSKOPU
 ```
 
 ```powershell
-.venv\Scripts\python.exe tests\live_crosscheck.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_crosscheck.py IP_OSCYLOSKOPU
 ```
 
 ```powershell
-.venv\Scripts\python.exe tests\live_sigrok.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_sigrok.py IP_OSCYLOSKOPU
 ```
 
 Zgodność z prawdziwym libsigrokdecode sprawdza się na jego przypadkach testowych, po sklonowaniu repozytoriów
