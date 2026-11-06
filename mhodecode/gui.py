@@ -1503,7 +1503,7 @@ class MainWindow(QtWidgets.QMainWindow):
         lengths = {len(wave.volts) for wave in waves.values()}
         if len(lengths) == 1:
             return waves
-        self._log(tr("Warning: the decoder mixes analog and digital channels. On this scope digital channels lag analog ones by several samples (8 samples measured at 50 MSa/s), which can mislead the decoder."))
+        self._log(tr("Warning: the decoder mixes analog and digital channels. Digital channels were measured lagging analog ones (160 ns at 50 MSa/s, 39 ns at 1 GSa/s), which can mislead the decoder. The cause was not established, and the leads can add to it."))
         finest = min(wave.dt for wave in waves.values())
         stretched = {}
         for key, wave in waves.items():

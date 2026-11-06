@@ -142,7 +142,7 @@ Settings open in a separate window rather than a popup.
   The V/div list has 1-2-5 steps times the channel's probe ratio, from 1 mV × ratio to 10 V × ratio at the 1 MΩ input, and choosing from
   it turns off the channel's fine adjustment (`:CHANnel<n>:VERNier OFF`). The list shows a value between the steps set on the scope for
   as long as it is set. The time offset is shown with an SI prefix and can be entered that way (`1.5 ms`,
-  `20 us`). Groups D0–D7 and D8–D15 turn the digital channels on and off themselves, with no separate box.
+  `20 us`). Groups D0–D7 and D8–D15 turn the digital channels on and off themselves, with no separate box. Below them, D0–D15 can be ticked one by one, and each change works on the scope at once.
   The **Auto** depth shows in brackets the number of points the scope chose. The scope's reply gives a number of points in Auto too, so
   the program recognizes Auto by having set it itself, or by a number of points no fixed depth has. A fixed depth set on the scope
   itself after choosing Auto in the program still shows as Auto.
@@ -174,9 +174,10 @@ the scope and downloaded over FTP, as `:WAVeform:SOURce` does not take D0–D15.
 - **Threshold:** the default threshold is 0 V, and 0–3.3 V logic needs about 1.65 V. It is set on the Oscilloscope tab.
 - **Sample density:** digital channels have 1/4 of the samples of an analog channel with one channel on, 1/2 with two, and the same
   number with four. The program reads this ratio from the file.
-- **Combining with analog:** digital channels are delayed against analog ones by a few samples (measured for example 8 samples at
-  50 MSa/s and 39 at 1 GSa/s). The delay is not constant over time, so the program does not correct it, and it warns in the log when a
-  decoder combines both kinds of channel.
+- **Combining with analog:** digital channels were measured lagging analog ones by 900 ns at 10 MSa/s, 160 ns at 50 MSa/s, 39 ns at
+  1 GSa/s and 19.5 ns at 2 GSa/s, on one set of leads whose lengths were not compared. The cause was not established. Leads can add a
+  fixed time, but cannot alone explain a delay that changes with the sample rate. The program does not correct it, and it warns in the log
+  when a decoder combines both kinds of channel.
 
 ## Scope files
 
@@ -289,6 +290,20 @@ names from the `parts.py` table, which the reference files leave out.
 
 `main.py --selftest ADDRESS --output FOLDER` goes through all functions in the program's window, saves a log and screenshots, and ends with
 code 0 only when all of them worked.
+
+## Releases
+
+Pushing a tag such as `v2.0.0` starts `.github/workflows/release.yml`. It checks that the tag matches `__version__` in
+`mhodecode/__init__.py`, runs `build.ps1` (the tests, then the exe) and publishes `MHO900LogicAnalyzer.exe` as a release. If a step fails,
+nothing is published.
+
+```powershell
+git tag v2.0.0
+```
+
+```powershell
+git push origin v2.0.0
+```
 
 ## Translations
 
