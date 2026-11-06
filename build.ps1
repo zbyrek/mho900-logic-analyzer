@@ -3,9 +3,12 @@ $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 if (-not (Test-Path .venv)) {
     python -m venv .venv
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     .venv\Scripts\python.exe -m pip install -r requirements.txt
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 .venv\Scripts\python.exe -m pytest tests -q
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 .venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed `
     --name MHO900LogicAnalyzer `
     --exclude-module tkinter --exclude-module matplotlib --exclude-module PySide2 --exclude-module PySide6 `
@@ -16,3 +19,4 @@ if (-not (Test-Path .venv)) {
     --hidden-import json --hidden-import math --hidden-import operator --hidden-import platform `
     --hidden-import re --hidden-import string --hidden-import struct --hidden-import subprocess --hidden-import zlib `
     main.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

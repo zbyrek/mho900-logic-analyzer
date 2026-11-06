@@ -19,7 +19,7 @@ from mhodecode import packet_fit  # noqa: E402
 from mhodecode.packet_fit import MAX_FIT_TIME_SCALE, fit_time_to_packet  # noqa: E402
 from mhodecode.signal import PacketSearch, from_levels, longest_packet  # noqa: E402
 from mhodecode.scope import HOLDOFF_MAX_S, CapturePlan, Scope, ScopeError, Waveform, digital_channel, format_si, vertical_scales  # noqa: E402
-from mhodecode.scope_panel import ScreenView, parse_seconds  # noqa: E402
+from mhodecode.scope_panel import LiveLink, ScreenView, parse_seconds  # noqa: E402
 from mhodecode.screen_stream import MOUSE_DOWN, MOUSE_MOVE, MOUSE_UP, ScreenStream  # noqa: E402
 from test_gui import CaptureScope, PlanScope, RecordingLink, app, run_job, square_wave, window  # noqa: E402, F401
 
@@ -964,16 +964,94 @@ def test_the_digital_groups_alone_turn_the_digital_channels_on(window):
     try:
         panel.pod_on[1].setChecked(False)
         panel.pod_on[2].setChecked(False)
+        for box in panel.digital_on.values():
+            box.setChecked(False)
         panel.settings["pod1"].set_value(True)
         assert link.sent == [":LA:ENABle ON", ":LA:POD1:DISPlay ON", ":LA:POD2:DISPlay OFF"]
         link.sent.clear()
-        panel.settings["pod2"].set_value(True)
-        assert link.sent == [":LA:ENABle ON", ":LA:POD2:DISPlay ON"]
+        panel.settings["pod2"].set_value(True)  # with channels on, :LA:ENABle ON would bring back an earlier set
+        assert link.sent == [":LA:POD2:DISPlay ON"]
         link.sent.clear()
         panel.settings["pod2"].set_value(False)
         assert link.sent == [":LA:POD2:DISPlay OFF"]
     finally:
         panel.link = None
+
+
+def test_a_single_digital_channel_goes_on_with_the_others_put_right(window):
+    panel = window.panel
+    panel.link = link = RecordingLink()
+    off = [f":LA:DIGital:ENABle D{number},OFF" for number in range(16) if number != 5]
+    try:
+        for pod in panel.pod_on:
+            panel.settings[f"pod{pod}"].set_value(False)
+        for box in panel.digital_on.values():
+            box.setChecked(False)
+        link.sent.clear()
+        panel.settings["digital5"].set_value(True)  # the only one: :LA:ENABle ON brings back what was on before
+        assert link.sent == [":LA:ENABle ON", ":LA:DIGital:ENABle D5,ON", *off]
+        link.sent.clear()
+        panel.settings["digital11"].set_value(True)
+        assert link.sent == [":LA:DIGital:ENABle D11,ON"]
+        assert not panel.pod_on[1].isChecked() and not panel.pod_on[2].isChecked()
+        link.sent.clear()
+        panel.settings["digital11"].set_value(False)
+        assert link.sent == [":LA:DIGital:ENABle D11,OFF"]
+    finally:
+        panel.link = None
+
+
+def test_a_digital_group_and_its_channels_follow_each_other(window):
+    panel = window.panel
+    panel.link = link = RecordingLink()
+    try:
+        for box in panel.digital_on.values():
+            box.setChecked(False)
+        panel.digital_on[10].setChecked(True)  # part of the other group stays as it is
+        panel.settings["pod1"].set_value(True)
+        assert all(panel.digital_on[number].isChecked() for number in range(8))
+        assert panel.digital_on[10].isChecked() and ":LA:POD2:DISPlay OFF" not in link.sent and ":LA:ENABle ON" not in link.sent
+        panel.settings["digital3"].set_value(False)
+        assert not panel.pod_on[1].isChecked()
+        panel.settings["digital3"].set_value(True)
+        assert panel.pod_on[1].isChecked()
+        panel.settings["pod1"].set_value(False)
+        assert not any(panel.digital_on[number].isChecked() for number in range(8))
+        for setting in (panel.settings[f"digital{number}"] for number in range(8, 16)):
+            setting.hold_until = 0.0
+        panel.pod_on[2].setChecked(False)
+        panel._value_received(":LA:POD2:DISPlay?", "1")  # the scope reads 1 only with all of it on
+        assert all(panel.digital_on[number].isChecked() for number in range(8, 16))
+    finally:
+        panel.link = None
+
+
+def test_the_status_line_names_a_whole_group_or_its_single_channels(window):
+    panel = window.panel
+    panel.link = RecordingLink()
+    panel.read_queries = set()
+    try:
+        for pod in panel.pod_on:
+            panel._value_received(f":LA:POD{pod}:DISPlay?", "0")
+        for number in range(16):
+            panel.settings[f"digital{number}"].hold_until = 0.0
+            panel._value_received(f":LA:DIGital:ENABle? D{number}", "1" if number in (3, 12) else "0")
+        assert panel.status().channels == "D3 D12"
+        panel._value_received(":LA:POD1:DISPlay?", "1")
+        assert panel.status().channels == "D0–D7 D12"
+    finally:
+        panel.link = None
+
+
+def test_digital_channels_are_read_a_few_at_a_time_and_all_after_a_connection():
+    link = LiveLink(None)
+    link.slow_queries = [f"q{number}" for number in range(16)]
+    assert link._next_queries() == ["q0", "q1", "q2", "q3"]
+    assert link._next_queries() == []  # not again until the status is due
+    link.status_due = 0.0
+    assert link._next_queries() == ["q4", "q5", "q6", "q7"]
+    link.read_all_once()
+    assert len(link.urgent) == 16
 
 
 def test_a_decoder_rate_comes_from_a_list_with_any_other_typed(window, app):

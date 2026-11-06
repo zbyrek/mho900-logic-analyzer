@@ -94,6 +94,11 @@ class ScopeError(RuntimeError):
     """Communication failure or an error reported by the instrument."""
 
 
+def pod_members(pod: int) -> range:
+    """The numbers of the digital channels in a group: 0 to 7 in POD1, 8 to 15 in POD2."""
+    return range((pod - 1) * POD_CHANNELS, pod * POD_CHANNELS)
+
+
 def digital_channel(number: int) -> int:
     return DIGITAL_BASE + number
 
@@ -433,7 +438,7 @@ class Scope:
                 self.write(":LA:ENABle OFF")
             return
         self.enable_digital()
-        members = {pod: range((pod - 1) * POD_CHANNELS, pod * POD_CHANNELS) for pod in DIGITAL_PODS}
+        members = {pod: pod_members(pod) for pod in DIGITAL_PODS}
         used = [pod for pod in DIGITAL_PODS if any(digital_channel(number) in wanted for number in members[pod])]
         # Turning the last digital channel off also turns :LA:ENABle off (measured, firmware 00.01.00),
         # so what is wanted goes on first. A group's display sets all its channels and reads 1 only when

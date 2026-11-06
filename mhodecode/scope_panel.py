@@ -10,7 +10,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import abort, generator, trigger
 from .i18n import tr
-from .scope import DIGITAL_PODS, HOLDOFF_MAX_S, HOLDOFF_MIN_S, ScopeError, format_si, vertical_scales
+from .scope import DIGITAL_PODS, HOLDOFF_MAX_S, HOLDOFF_MIN_S, ScopeError, format_si, pod_members, vertical_scales
 from .scope_status import ScopeStatus
 from .screen_stream import MOUSE_DOWN, MOUSE_MOVE, MOUSE_UP, ScreenStream
 
@@ -22,6 +22,7 @@ SCREEN_WIDTH = 760
 QUERIES_PER_PASS = 8
 PASS_PAUSE_S = 0.2
 STATUS_PERIOD_S = 1.0  # the status line is on every tab, so what it shows is read also with the Oscilloscope tab hidden
+SLOW_QUERIES_PER_STATUS = 4  # a query takes about 25 ms (measured), so the 16 digital channels are read a few at a time
 IDLE_POLL_S = 0.1
 RETRY_AFTER_LOSS_S = 2.0
 # A value read just after a change can still be the old one, so it is not shown for this long.
@@ -116,6 +117,8 @@ class LiveLink(QtCore.QThread):
         self.urgent = deque()
         self.watched: list[str] = []
         self.status_queries: list[str] = []
+        self.slow_queries: list[str] = []
+        self.slow_position = 0
         self.status_due = 0.0
         self.position = 0
         self.pending_full_pass = 0
@@ -136,6 +139,7 @@ class LiveLink(QtCore.QThread):
     def read_all_once(self) -> None:
         """One pass over everything even with the tab hidden, for a fresh connection or after a job."""
         self.pending_full_pass = len(self.watched)
+        self.urgent.extend(self.slow_queries)
 
     def drain(self) -> None:
         """Send the queued commands now, and report any the instrument refused."""
@@ -160,6 +164,11 @@ class LiveLink(QtCore.QThread):
         if now >= self.status_due:
             self.status_due = now + STATUS_PERIOD_S
             batch.extend(query for query in self.status_queries if query not in batch)
+            for _ in range(min(SLOW_QUERIES_PER_STATUS, len(self.slow_queries))):
+                query = self.slow_queries[self.slow_position % len(self.slow_queries)]
+                self.slow_position += 1
+                if query not in batch:
+                    batch.append(query)
         if self.watched:
             while len(batch) < QUERIES_PER_PASS and (self.active or self.pending_full_pass):
                 batch.append(self.watched[self.position % len(self.watched)])
@@ -460,21 +469,65 @@ class CheckSetting(Setting):
 
 
 class PodSetting(CheckSetting):
-    """A group of digital channels. The scope has them on as long as a group is on: the last group off turns :LA:ENABle
-    off, and :LA:ENABle on brings back the groups it had before, so the other group is put right (measured)."""
+    """A group of digital channels. The last channel off turns :LA:ENABle off. :LA:ENABle ON brings back an earlier set of
+    channels, also with some on, so it goes only when none is on, and the other group is then put right (measured)."""
 
     def __init__(self, panel, pod, widget):
         super().__init__(panel, f":LA:POD{pod}:DISPlay?", widget, lambda value, pod=pod: f":LA:POD{pod}:DISPlay {'ON' if value else 'OFF'}")
         self.pod = pod
 
+    def apply_reply(self, reply):
+        super().apply_reply(reply)
+        if self.current():  # the scope reads 1 only with all of the group on
+            for number in pod_members(self.pod):
+                self.panel.settings[f"digital{number}"].show("1")
+
     def changed(self, *_args):
-        if self.current():
+        first = self.current() and not any(box.isChecked() for box in self.panel.digital_on.values())
+        for number in pod_members(self.pod):  # a group's display sets all its channels (measured)
+            self.panel.settings[f"digital{number}"].mirror(self.current())
+        if first:
             self.panel.submit(":LA:ENABle ON")
         super().changed()
-        if self.current():
-            for pod, check in self.panel.pod_on.items():
-                if pod != self.pod and not check.isChecked():
+        if first:
+            for pod in self.panel.pod_on:
+                if pod != self.pod:
                     self.panel.submit(f":LA:POD{pod}:DISPlay OFF", f":LA:POD{pod}:DISPlay?")
+
+
+class DigitalChannelSetting(CheckSetting):
+    """One digital channel. The last one off turns :LA:ENABle off, a channel turned on then stays dark until :LA:ENABle ON,
+    and that brings back the channels on before, so those are put right after the wanted one is on (measured)."""
+
+    def __init__(self, panel, number, widget):
+        name = f"D{number}"
+        super().__init__(panel, f":LA:DIGital:ENABle? {name}", widget, lambda value: f":LA:DIGital:ENABle {name},{'ON' if value else 'OFF'}")
+        self.number = number
+        self.pod = next(pod for pod in DIGITAL_PODS if number in pod_members(pod))
+
+    def mirror(self, value):
+        """The widget follows a change sent another way, and a reply older than that change is not shown."""
+        self.hold_until = time.monotonic() + HOLD_AFTER_CHANGE_S
+        blocked = self.widget.blockSignals(True)
+        self.widget.setChecked(value)
+        self.widget.blockSignals(blocked)
+
+    def changed(self, *_args):
+        panel = self.panel
+        alone = self.current() and not any(box.isChecked() for number, box in panel.digital_on.items() if number != self.number)
+        if alone:
+            panel.submit(":LA:ENABle ON")
+        pod_setting = panel.settings[f"pod{self.pod}"]
+        blocked = pod_setting.widget.blockSignals(True)
+        pod_setting.widget.setChecked(all(panel.digital_on[number].isChecked() for number in pod_members(self.pod)))
+        pod_setting.widget.blockSignals(blocked)
+        super().changed()
+        if alone:
+            for number in panel.digital_on:
+                if number != self.number:
+                    panel.submit(panel.settings[f"digital{number}"].send(False))
+        for pod in DIGITAL_PODS:
+            panel.submit_read(panel.settings[f"pod{pod}"].read)
 
 
 class HexSetting(Setting):
@@ -710,10 +763,10 @@ class ScopePanel(QtWidgets.QWidget):
     def _digital_group(self):
         group = self._group("Digital channels")
         grid = QtWidgets.QGridLayout(group)
-        self.pod_on, self.pod_threshold = {}, {}
+        self.pod_on, self.pod_threshold, self.digital_on = {}, {}, {}
         for row, (pod, name) in enumerate(zip(DIGITAL_PODS, ("D0–D7", "D8–D15"))):
             check = QtWidgets.QCheckBox(name)
-            self.owner._bind(check.setToolTip, "Turns this group of channels on on the scope.")
+            self.owner._bind(check.setToolTip, "Turns all channels of this group on or off on the scope. Ticked only when all of them are on.")
             self.pod_on[pod] = self._add(f"pod{pod}", PodSetting(self, pod, check))
             level = self._spin(-15.0, 15.0, 3, " V")
             level.setSingleStep(0.1)
@@ -722,9 +775,19 @@ class ScopePanel(QtWidgets.QWidget):
             grid.addWidget(check, row, 0)
             grid.addWidget(self.owner._label("Threshold"), row, 1)
             grid.addWidget(level, row, 2)
+        channels = QtWidgets.QGridLayout()
+        channels.setVerticalSpacing(2)
+        for pod_row, pod in enumerate(DIGITAL_PODS):
+            for column, number in enumerate(pod_members(pod)):
+                check = QtWidgets.QCheckBox(f"D{number}")
+                self.owner._bind(check.setToolTip, "Turns this channel on or off on the scope. With the last one off, the scope turns the digital channels off.")
+                self.digital_on[number] = self._add(f"digital{number}", DigitalChannelSetting(self, number, check), poll=False)
+                channels.addWidget(check, pod_row, column)
+                channels.setColumnStretch(column + 1, 1 if column + 1 == len(pod_members(pod)) else 0)  # kept together, all in view
+        grid.addLayout(channels, len(DIGITAL_PODS), 0, 1, 3)
         note = self.owner._label("The default threshold is 0 V: 0–3.3 V logic needs about 1.65 V, or the channels will not change state.")
         note.setWordWrap(True)
-        grid.addWidget(note, len(DIGITAL_PODS), 0, 1, 3)
+        grid.addWidget(note, len(DIGITAL_PODS) + 1, 0, 1, 3)
         return group
 
     def _trigger_group(self):
@@ -829,6 +892,7 @@ class ScopePanel(QtWidgets.QWidget):
         if self.link is not None:
             self.link.watch([STATE_QUERY, RATE_QUERY] + self.fixed_queries + [s.read for s in self._visible_trigger_settings() if s.read])
             self.link.status_queries = self._status_queries()
+            self.link.slow_queries = [self.settings[f"digital{number}"].read for number in self.digital_on]
 
     # ---- status line ----------------------------------------------------
     def _status_queries(self) -> list[str]:
@@ -861,12 +925,23 @@ class ScopePanel(QtWidgets.QWidget):
             return ""
         return tr("Holdoff enabled: {time}", time=format_si(value, "s"))
 
+    def _digital_names(self) -> list[str]:
+        """A group by its name when all of it is on, otherwise its channels one by one."""
+        names = []
+        for pod, box in self.pod_on.items():
+            if box.isChecked():
+                names.append(self._read_text(self.settings[f"pod{pod}"], box.text()))
+            else:
+                names += [self._read_text(self.settings[f"digital{number}"], self.digital_on[number].text())
+                          for number in pod_members(pod) if self.digital_on[number].isChecked()]
+        return names
+
     def status(self) -> ScopeStatus:
         """What the status line shows, as last read from the scope."""
         if self.link is None:
             return ScopeStatus(state=tr("Not connected"))
         channels = [self._read_text(self.settings[f"on{channel}"], f"CH{channel}") for channel, box in self.channel_on.items() if box.isChecked()]
-        channels += [self._read_text(self.settings[f"pod{pod}"], box.text()) for pod, box in self.pod_on.items() if box.isChecked()]
+        channels += self._digital_names()
         depth = self._read_text(self.settings["depth"], self.depth.currentText())
         return ScopeStatus(
             state=tr("Busy") if self.job_running else self.state_text,
@@ -961,6 +1036,10 @@ class ScopePanel(QtWidgets.QWidget):
     def submit(self, command, read_back=None):
         if self.link is not None:
             self.link.send(command, read_back)
+
+    def submit_read(self, query):
+        if self.link is not None:
+            self.link.urgent.append(query)
 
     def report(self, text):
         self.message.emit(text)
