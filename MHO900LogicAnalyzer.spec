@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='MHO900Decoder',
+    name='MHO900LogicAnalyzer',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

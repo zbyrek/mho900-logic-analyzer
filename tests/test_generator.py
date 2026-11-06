@@ -216,7 +216,7 @@ def spec_texts():
 
 def gui_constants():
     from mhodecode import decoder_panel, gui, scope_panel, trigger
-    texts = [label for label, _value in gui.DATA_FORMATS + gui.LOADS]
+    texts = [label for label, _value in gui.DATA_FORMATS + generator.LOADS]
     texts += [label for label, _value in scope_panel.DEPTHS + scope_panel.ACQUIRE_TYPES + scope_panel.BANDWIDTHS + trigger.SWEEPS]
     texts += list(scope_panel.STATE_NAMES.values())
     for mode in trigger.MODES:

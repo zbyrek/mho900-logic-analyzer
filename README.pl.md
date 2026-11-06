@@ -1,4 +1,4 @@
-# MHO900 Dekoder protokołów
+# MHO900 Logic Analyzer
 
 [English](README.md) | Polski
 
@@ -18,10 +18,17 @@ Jeśli program skończy się błędem, okno konsoli zostaje otwarte z jego treś
 
 1. Wpisz adres IP i kliknij **Połącz**.
 2. Przeciągnij dekoder z drzewa i przypisz sygnały do kanałów CH1–CH4 lub D0–D15. Kolejne dekodery dodaje się
-   tak samo, także ten sam dekoder kilka razy na innych kanałach i z innymi ustawieniami.
+   tak samo, także ten sam dekoder kilka razy na innych kanałach i z innymi ustawieniami. Nowy dekoder bierze tylko kanały w użyciu:
+   sygnały ponad ich liczbę zostają puste, dopóki ich nie przypiszesz, i żaden kanał nie jest dokładany.
 3. Kliknij etykietę pasu dekodera albo wybierz **Ustawienia dekodera** z menu prawego klawisza: otworzy się okno, w którym ustawisz kanały
    i parametry protokołu. Dekodowanie rusza samo po każdej zmianie przebiegu, kanału lub opcji, więc nie ma przycisku dekodowania.
-4. Kliknij **Autoskala**, aby dopasować skalę pionową i poziom wyzwalania.
+   Sygnały nowego dekodera zaczynają od kanałów w użyciu: tych, na których był sygnał w ostatnich danych, potem włączonych na oscyloskopie, potem
+   wybranych w aplikacji. Najpierw idą kanały, których nie używa inny dekoder.
+4. Kliknij **Autoskala** w zakładce **Oscyloskop**, gdzie podgląd na żywo pokazuje wynik, aby uruchomić funkcję Auto oscyloskopu na kanałach analogowych wybranych w aplikacji. Są one wtedy włączane,
+   a pozostałe wyłączane. Auto dopasowuje każdy kanał do sygnału na tym kanale i ustawia wyzwalanie. Program odczytuje potem zapis i ustawia
+   podstawę czasu tak, by widać było cały pakiet: pakiet to ciąg zboczy z przerwą dłuższą niż 20 typowych odstępów między zboczami po obu stronach.
+   Gdy zapis nie zawiera całego pakietu albo wybrany kanał nie ma w nim zbocza, podstawa czasu jest zwiększana, najwyżej do 100 ms/dz, a sygnał bez pakietów zachowuje podstawę czasu
+   z Auto. Holdoff wyzwalania jest ustawiany na długość pakietu plus połowę tej przerwy, więc oscyloskop nie wyzwala się ponownie wewnątrz pakietu. Kanały, które Auto zostawi włączone, stają się wybranymi.
 5. Na zakładce **Oscyloskop** wybierz głębokość pamięci, podstawę czasu (lista 500 ps/div … 500 s/div
    w krokach 1-2-5) i wyzwalanie, sprawdzając efekt na podglądzie, a potem kliknij **Run**.
    Przycisk **Czytaj pamięć** dekoduje to, co jest już w pamięci oscyloskopu, a pole **Powtarzaj** daje akwizycje
@@ -81,9 +88,11 @@ sygnałach, dokładanie na stos, ukrywanie dekodera i pojedynczych wierszy oraz 
 Z PulseView nie ma tu edycji nazwy i koloru pasu, przeciągania pasów w inną kolejność, pauzy dekodowania ani menu
 kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym oknie, a nie w dymku.
 
-- **Pasek narzędzi u góry:** połączenie, **Ustawienia oscyloskopu**, **Run** (F5), a w jego miejscu w trakcie pracy **Przerwij** (Esc), pole **Powtarzaj**, osobno odczyt pamięci i autoskala,
-  powiększenie, widok **Logika/Analog** i **Kursory**. Ręczne RUN, STOP, SINGLE i FORCE są tylko w zakładce Oscyloskop.
-- **Ustawienia oscyloskopu:** menu na pasku z kanałami CH1–CH4 i D0–D15, głębokością pamięci, podstawą czasu, wyzwalaniem,
+- **Pasek narzędzi u góry:** tylko połączenie, a w wierszu pod nim linia stanu oscyloskopu. Każda zakładka ma własne elementy sterujące.
+- **Zakładka Przebiegi:** **Ustawienia oscyloskopu**, **Run** (F5), a w jego miejscu w trakcie pracy **Przerwij** (Esc), pole **Powtarzaj**, osobno odczyt pamięci,
+  powiększenie, widok **Logika/Analog** i **Kursory**. Skróty tych elementów działają na tej zakładce.
+- **Zakładka Oscyloskop:** ręczne RUN, STOP, SINGLE i FORCE oraz **Autoskala**, a w jej miejscu w trakcie pracy **Przerwij**.
+- **Ustawienia oscyloskopu:** menu w zakładce Przebiegi z kanałami CH1–CH4 i D0–D15, głębokością pamięci, podstawą czasu, wyzwalaniem,
   formatem odczytu, wymuszeniem DC i czekaniem na wyzwolenie. Oscyloskop dostaje je dopiero przy **Akwizycji**: zaznaczone kanały
   włącza, a niezaznaczone wyłącza. **Czytaj pamięć** niczego z tego nie wysyła, a tylko zatrzymuje oscyloskop i czyta. „Bez zmian”
   zostawia to, co jest na oscyloskopie, także po zmianie w zakładce Oscyloskop, która działa od razu. Obok kanałów cyfrowych są progi
@@ -111,12 +120,12 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   wyzwolenie bez limitu. Próg ustawiony na kanale działa w widoku Logika, w dekoderach z progiem automatycznym i w wyzwalaniu.
   Bez progu poziom wyzwalania to środek sygnału z ostatniego odczytu, a bez odczytu zostaje poziom z oscyloskopu.
 - **Zakładka Przebiegi:** kółko myszy powiększa, a przeciąganie lub suwak pod przebiegami przesuwa w czasie. Widok **Logika** pokazuje
-  stany po progu, a **Analog** napięcia. Wiersze przebiegów są niskie, a miejsce dostają wiersze dekodera. Skala pionowa
+  stany po progu, a **Analog** napięcia. Przy powiększeniu, w którym próbki da się rozróżnić, **Analog** zaznacza każdą kropką. Wiersze przebiegów są niskie, a miejsce dostają wiersze dekodera. Skala pionowa
   w widoku **Analog** jest dopasowywana raz, do całego odczytu, i nie zmienia się przy zmianie skali czasu. Kliknięcie osi
   napięcia pozwala wpisać górę i dół zakresu albo wrócić do skali automatycznej, a wpisany zakres zostaje też przy kolejnych
   odczytach. Kursory, jak w PulseView, mają nad osią
   czasu flagi A i B i strzałkę z czasem i częstotliwością między nimi, a obszar między nimi jest zacieniowany. Przeciąga się
-  linie albo flagi. Położenia A i B podaje pasek stanu. Paski adnotacji mają kolor wiersza dla danych i szary dla pól
+  linie albo flagi. Tam, gdzie widok **Analog** pokazuje kropki, kursor przeciągnięty blisko próbki przyciąga się do niej, a między próbkami porusza się swobodnie. Położenia A i B podaje pasek stanu. Paski adnotacji mają kolor wiersza dla danych i szary dla pól
   sterujących protokołu (start, stop, ACK, adres). Tak samo wyróżnia je tabela. Tekst, który nie mieści się na pasku w żadnej
   postaci, jest pomijany. Kliknięcie paska adnotacji zaznacza jej wiersz w tabeli, a kliknięcie wiersza pokazuje ją na
   przebiegu.
@@ -124,10 +133,13 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   jak dotyk. Strumień działa tylko przy widocznej zakładce i zaznaczonym podglądzie. Strona WWW i program wypychają się nawzajem z tego
   połączenia. Oprócz tego podstawa czasu, głębokość pamięci, tryb akwizycji, kanały
   CH1–CH4, kanały cyfrowe i wyzwalanie. Każda zmiana idzie do oscyloskopu od razu, a wartości są stale odczytywane,
-  więc widać też zmiany zrobione na samym oscyloskopie. Odrzucone polecenie pojawia się na pasku stanu.
+  więc widać też zmiany zrobione na samym oscyloskopie. Odrzucone polecenie pojawia się na pasku stanu. **Holdoff** w ustawieniach wyzwalania
+  przyjmuje od 8 ns, co oznacza jego brak, do 10 s i działa tylko przy wyzwalaniu typu Zbocze, bo Programming Guide wyklucza go dla pozostałych typów z listy.
+- **Linia stanu oscyloskopu:** we własnym wierszu pod połączeniem, na każdej zakładce, odczytywana co sekundę: stan akwizycji, włączone kanały, podstawa czasu, częstotliwość próbkowania,
+  głębokość pamięci i wyzwalanie. **Holdoff włączony** z jego czasem jest tam widoczny, dopóki holdoff działa.
   Lista V/dz ma kroki 1-2-5 pomnożone przez mnożnik sondy kanału, od 1 mV × mnożnik do 10 V × mnożnik przy wejściu 1 MΩ, a wybór z niej wyłącza
   dokładne strojenie kanału (`:CHANnel<n>:VERNier OFF`). Wartość spoza kroków ustawioną na oscyloskopie lista pokazuje, dopóki jest ustawiona.
-  Autoskala też ustawia te kroki. Przesunięcie czasu jest pokazywane z przedrostkiem SI i tak można je wpisać (`1,5 ms`, `20 us`).
+  Przesunięcie czasu jest pokazywane z przedrostkiem SI i tak można je wpisać (`1,5 ms`, `20 us`).
   Grupy D0–D7 i D8–D15 same włączają i wyłączają kanały cyfrowe, bez osobnego pola.
   Głębokość **Auto** pokazuje w nawiasie liczbę punktów dobraną przez oscyloskop. Odczyt z oscyloskopu podaje liczbę punktów także w Auto, więc
   program rozpoznaje Auto po tym, że sam je ustawił, albo po liczbie punktów, której nie ma żadna stała głębokość. Stała głębokość ustawiona
@@ -221,12 +233,16 @@ Zakładka **Generator** wysyła sygnał, a odbiór i porównanie są w menu **Za
    Dla każdego wyjścia ustawiasz poziom niski i wysoki oraz obciążenie (High-Z lub 50 Ω). Poziomy trafiają
    na wyjście, zanim się włączy, więc urządzenie nie zobaczy amplitudy z wcześniejszego użycia.
 2. **Odbierz** wykonuje akwizycję z kanałami i dekoderem z zakładki **Dekoder** i ustawieniami z zakładki **Oscyloskop**.
-   Przycisk **Ustaw dekoder i podstawę czasu wg generatora** kopiuje parametry protokołu, dobiera
-   podstawę czasu oraz przypisuje kanał o numerze wyjścia (AFG1 na CH1). Sprawdź to, jeśli urządzenie
-   odpowiada na innych kanałach.
+   Przycisk **Ustaw dekoder i podstawę czasu wg generatora** kopiuje parametry protokołu i dobiera
+   podstawę czasu. Kanały i źródło wyzwalania pozostają bez zmian, bo aplikacja nie wie, do czego
+   podłączone są wyjścia.
 3. **Porównaj** szuka w zdekodowanych danych kompletnej kopii bez błędów: danych wysłanych albo wpisanych
    jako oczekiwane. Przy niezgodności podaje pierwszy różniący się bajt. Porównanie działa dla każdego
    dekodera podającego dane binarne i dla CAN, także gdy urządzenie odpowiada innym protokołem.
+
+**Pliki przebiegów AFG** w menu **Zaawansowane** mają ten sam formularz i nie wymagają połączenia. Narzędzie zapisuje po jednym pliku CSV na
+każdą używaną linię, nazwany podaną nazwą i nazwą linii (`i2c_scl.csv`), i pokazuje, co wpisać w generatorze: obciążenie, plik, częstotliwość,
+amplitudę, offset, a przy dwóch liniach także Align Phase.
 
 Generator obsługuje UART, I2C, SPI, CAN i CAN FD. I2S wymaga 3 linii, a przyrząd ma 2 wyjścia.
 
@@ -252,15 +268,15 @@ Ograniczenia wyjść AFG:
 Poniższe testy wymagają połączenia AFG1 z CH1 i AFG2 z CH2:
 
 ```powershell
-.venv\Scripts\python.exe tests\live_scope.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_scope.py IP_OSCYLOSKOPU
 ```
 
 ```powershell
-.venv\Scripts\python.exe tests\live_crosscheck.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_crosscheck.py IP_OSCYLOSKOPU
 ```
 
 ```powershell
-.venv\Scripts\python.exe tests\live_sigrok.py 192.0.2.1
+.venv\Scripts\python.exe tests\live_sigrok.py IP_OSCYLOSKOPU
 ```
 
 Zgodność z prawdziwym libsigrokdecode sprawdza się na jego przypadkach testowych, po sklonowaniu repozytoriów

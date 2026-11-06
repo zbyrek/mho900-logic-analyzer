@@ -1,4 +1,4 @@
-"""The toolbar's scope settings, applied by an acquisition, and the window of one channel's row."""
+"""The Waveforms tab's scope settings, applied by an acquisition, and the window of one channel's row."""
 from __future__ import annotations
 
 from typing import Iterable

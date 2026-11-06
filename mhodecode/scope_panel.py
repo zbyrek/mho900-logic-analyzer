@@ -10,7 +10,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import abort, generator, trigger
 from .i18n import tr
-from .scope import DIGITAL_PODS, ScopeError, format_si, vertical_scales
+from .scope import DIGITAL_PODS, HOLDOFF_MAX_S, HOLDOFF_MIN_S, ScopeError, format_si, vertical_scales
+from .scope_status import ScopeStatus
 from .screen_stream import MOUSE_DOWN, MOUSE_MOVE, MOUSE_UP, ScreenStream
 
 ANALOG_CHANNELS = (1, 2, 3, 4)
@@ -20,6 +21,7 @@ SCREEN_WIDTH = 760
 # A query takes 25 ms on this instrument (measured), so one pass reads a few parameters by turns.
 QUERIES_PER_PASS = 8
 PASS_PAUSE_S = 0.2
+STATUS_PERIOD_S = 1.0  # the status line is on every tab, so what it shows is read also with the Oscilloscope tab hidden
 IDLE_POLL_S = 0.1
 RETRY_AFTER_LOSS_S = 2.0
 # A value read just after a change can still be the old one, so it is not shown for this long.
@@ -40,6 +42,7 @@ DEFAULT_PROBE = 1.0
 OFFSET_STEP_DIVISIONS = 0.1  # one click of the time offset's arrows
 TIME_OFFSET_DECIMALS = 12
 TIME_OFFSET_DEFAULT_STEP = 1e-4
+HOLDOFF_STEP_S = 1e-6
 SI_FACTORS = {"": 1.0, "k": 1e3, "m": 1e-3, "u": 1e-6, "µ": 1e-6, "μ": 1e-6, "n": 1e-9, "p": 1e-12}
 SECONDS_TEXT = re.compile(r"\s*([+-]?(?:\d+[.,]?\d*|[.,]\d+)(?:[eE][+-]?\d+)?)\s*([kmuµμnp]?)s?\s*")
 SECONDS_PARTIAL = re.compile(r"[\s\d.,eE+kmuµμnps-]*")
@@ -49,6 +52,7 @@ RATE_QUERY = ":ACQuire:SRATe?"
 DEPTH_QUERY = ":ACQuire:MDEPth?"
 TIME_QUERY = ":TIMebase:MAIN:SCALe?"
 MODE_QUERY = ":TRIGger:MODE?"
+HOLDOFF_QUERY = ":TRIGger:HOLDoff?"
 
 
 def format_volts(value: float) -> str:
@@ -73,10 +77,10 @@ def parse_seconds(text: str) -> float:
 class SecondsBox(QtWidgets.QDoubleSpinBox):
     """A time shown with an SI prefix. It also takes one when typed."""
 
-    def __init__(self, limit):
+    def __init__(self, limit, minimum=None):
         super().__init__()
         self.setDecimals(TIME_OFFSET_DECIMALS)
-        self.setRange(-limit, limit)
+        self.setRange(-limit if minimum is None else minimum, limit)
 
     def textFromValue(self, value):
         return format_si(value, "s")
@@ -111,6 +115,8 @@ class LiveLink(QtCore.QThread):
         self.commands = deque()
         self.urgent = deque()
         self.watched: list[str] = []
+        self.status_queries: list[str] = []
+        self.status_due = 0.0
         self.position = 0
         self.pending_full_pass = 0
         self.active = False  # the tab is on screen
@@ -150,6 +156,10 @@ class LiveLink(QtCore.QThread):
         batch = []
         while self.urgent and len(batch) < QUERIES_PER_PASS:
             batch.append(self.urgent.popleft())
+        now = time.monotonic()
+        if now >= self.status_due:
+            self.status_due = now + STATUS_PERIOD_S
+            batch.extend(query for query in self.status_queries if query not in batch)
         if self.watched:
             while len(batch) < QUERIES_PER_PASS and (self.active or self.pending_full_pass):
                 batch.append(self.watched[self.position % len(self.watched)])
@@ -530,6 +540,7 @@ class BitsSetting(Setting):
 class ScopePanel(QtWidgets.QWidget):
     """The live screen on the left, every setting on the right. Needs the owner's translation binding."""
     message = QtCore.pyqtSignal(str)
+    status_changed = QtCore.pyqtSignal()
 
     def __init__(self, owner):
         super().__init__()
@@ -542,7 +553,12 @@ class ScopePanel(QtWidgets.QWidget):
         self.trigger_rows: dict[str, list] = {}
         self.action_buttons = []
         self.shown_form = None
+        self.state_text = ""
+        self.rate_text = ""
+        self.job_running = False
+        self.read_queries: set[str] = set()  # replied to on this connection: until then a widget's value says nothing
         self._build()
+        self.owner.bindings.append((lambda _text: self.status_changed.emit(), ""))
 
     # ---- layout ---------------------------------------------------------
     def _build(self):
@@ -554,7 +570,12 @@ class ScopePanel(QtWidgets.QWidget):
         left = QtWidgets.QWidget()
         left_layout = QtWidgets.QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        bar = QtWidgets.QHBoxLayout()
+        row = QtWidgets.QWidget()
+        # A tab's minimum holds while another tab shows too: this row must not widen the window. It has the room at the
+        # splitter's default position, and gets squeezed only if the splitter is dragged far to the left.
+        row.setMinimumWidth(1)
+        bar = QtWidgets.QHBoxLayout(row)
+        bar.setContentsMargins(0, 0, 0, 0)
         for text, command, tip in (("RUN", ":RUN", "Run continuously"), ("STOP", ":STOP", "Stop acquiring"),
                                    ("SINGLE", ":SINGle", "One acquisition"), ("FORCE", ":TFORce", "Force a trigger")):
             button = QtWidgets.QPushButton(text)
@@ -563,11 +584,15 @@ class ScopePanel(QtWidgets.QWidget):
             button.clicked.connect(lambda _checked, command=command: self.submit(command, STATE_QUERY))
             bar.addWidget(button)
             self.action_buttons.append(button)
-        self.state_label = QtWidgets.QLabel()
-        self.state_label.setMinimumWidth(170)
-        bar.addWidget(self.state_label)
-        self.rate_label = QtWidgets.QLabel()
-        bar.addWidget(self.rate_label)
+        self.autoscale_button = self.owner._busy_button("Autoscale", self.owner._autoscale, needs_scope=True)
+        self.owner._bind(self.autoscale_button.setToolTip, "Turns on the chosen analog channels on the scope and the others off, then runs the scope's own Auto: it fits each channel to its signal and sets the trigger, then fits the time base and the trigger holdoff so that one whole packet of the signal shows.")
+        self.abort_button = self.owner.abort_control()
+        self.autoscale_place = QtWidgets.QStackedWidget()  # Autoscale gives way to Abort while something can be stopped
+        self.autoscale_place.addWidget(self.autoscale_button)
+        self.autoscale_place.addWidget(self.abort_button)
+        # A stacked widget takes all the free room of its row otherwise.
+        self.autoscale_place.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        bar.addWidget(self.autoscale_place)
         bar.addStretch(1)
         self.live_check = QtWidgets.QCheckBox()
         self.live_check.setChecked(True)
@@ -575,7 +600,7 @@ class ScopePanel(QtWidgets.QWidget):
         self.owner._bind(self.live_check.setToolTip, "The scope's screen as it changes; clicks and drags work on it like touch. The scope's web page and this program push each other off this connection.")
         self.live_check.toggled.connect(self._live_toggled)
         bar.addWidget(self.live_check)
-        left_layout.addLayout(bar)
+        left_layout.addWidget(row)
         self.screen_view = ScreenView()
         self.screen_view.touched.connect(self._touched)
         left_layout.addWidget(self.screen_view, 1)
@@ -712,6 +737,11 @@ class ScopePanel(QtWidgets.QWidget):
         self.sweep = self._combo(trigger.SWEEPS)
         self._add("sweep", ChoiceSetting(self, ":TRIGger:SWEep?", self.sweep, lambda value: f":TRIGger:SWEep {value}"))
         form.addRow(self.owner._label("Sweep"), self.sweep)
+        self.holdoff = SecondsBox(HOLDOFF_MAX_S, HOLDOFF_MIN_S)
+        self.holdoff.setSingleStep(HOLDOFF_STEP_S)
+        self.owner._bind(self.holdoff.setToolTip, "After a trigger the scope does not trigger again for this long. 8 ns, the lowest value, means no holdoff. Only the Slope trigger type has it. Can be typed with a prefix, such as 1.5 ms, 20 µs or 20 us.")
+        self._add("holdoff", NumberSetting(self, HOLDOFF_QUERY, self.holdoff, lambda value: f":TRIGger:HOLDoff {value:.6g}"))
+        form.addRow(self.owner._label("Holdoff"), self.holdoff)
         layout.addLayout(form)
         self.trigger_pages = QtWidgets.QStackedWidget()
         for mode in trigger.MODES:
@@ -777,6 +807,7 @@ class ScopePanel(QtWidgets.QWidget):
                 shown = not field.when or condition in field.when
                 label.setVisible(shown)
                 widget.setVisible(shown)
+        self.holdoff.setEnabled(self.current_mode().name in trigger.HOLDOFF_MODES)
         self._update_watch()
 
     def setting_shown(self, setting):
@@ -792,13 +823,64 @@ class ScopePanel(QtWidgets.QWidget):
                 self._refresh_trigger_form()
                 if self.link is not None:  # the fields just shown hold old values until read
                     self.link.urgent.extend(setting.read for setting in self._visible_trigger_settings() if setting.read)
+        self.status_changed.emit()
 
     def _update_watch(self):
         if self.link is not None:
             self.link.watch([STATE_QUERY, RATE_QUERY] + self.fixed_queries + [s.read for s in self._visible_trigger_settings() if s.read])
+            self.link.status_queries = self._status_queries()
+
+    # ---- status line ----------------------------------------------------
+    def _status_queries(self) -> list[str]:
+        shown = [self.settings[name].read for name in ("time_scale", "depth", "trigger_mode", "sweep", "holdoff")]
+        shown += [self.settings[f"on{channel}"].read for channel in ANALOG_CHANNELS]
+        shown += [self.settings[f"pod{pod}"].read for pod in DIGITAL_PODS]
+        return [STATE_QUERY, RATE_QUERY] + shown + [setting.read for setting in self._trigger_summary_settings()]
+
+    def _trigger_summary_settings(self) -> list[Setting]:
+        settings = self.trigger_settings[self.current_mode().name]
+        return [settings[key] for key in ("SOURce", "LEVel") if key in settings]
+
+    def _read_text(self, setting: Setting, text: str) -> str:
+        return text if setting.read in self.read_queries else ""
+
+    def _trigger_summary(self) -> str:
+        mode_setting, sweep_setting = self.settings["trigger_mode"], self.settings["sweep"]
+        parts = [self._read_text(mode_setting, self.trigger_mode.currentText())]
+        for setting in self._trigger_summary_settings():
+            text = setting.widget.currentText() if isinstance(setting, ChoiceSetting) else f"{setting.current():g} V"
+            parts.append(self._read_text(setting, text))
+        parts.append(self._read_text(sweep_setting, self.sweep.currentText()))
+        shown = ", ".join(part for part in parts if part)
+        return tr("Trigger: {settings}", settings=shown) if shown else ""
+
+    def _holdoff_notice(self) -> str:
+        """Only where it works: the scope keeps the value also for a trigger type that has no holdoff (measured)."""
+        value = self.holdoff.value()
+        if not self._read_text(self.settings["holdoff"], "read") or self.current_mode().name not in trigger.HOLDOFF_MODES or value <= HOLDOFF_MIN_S:
+            return ""
+        return tr("Holdoff enabled: {time}", time=format_si(value, "s"))
+
+    def status(self) -> ScopeStatus:
+        """What the status line shows, as last read from the scope."""
+        if self.link is None:
+            return ScopeStatus(state=tr("Not connected"))
+        channels = [self._read_text(self.settings[f"on{channel}"], f"CH{channel}") for channel, box in self.channel_on.items() if box.isChecked()]
+        channels += [self._read_text(self.settings[f"pod{pod}"], box.text()) for pod, box in self.pod_on.items() if box.isChecked()]
+        depth = self._read_text(self.settings["depth"], self.depth.currentText())
+        return ScopeStatus(
+            state=tr("Busy") if self.job_running else self.state_text,
+            channels=" ".join(name for name in channels if name),
+            time_base=self._read_text(self.settings["time_scale"], self.time_scale.currentText()),
+            rate=self.rate_text,
+            depth=tr("Memory {depth}", depth=depth) if depth else "",
+            trigger=self._trigger_summary(),
+            holdoff=self._holdoff_notice())
 
     # ---- link -----------------------------------------------------------
     def attach(self, scope):
+        self.read_queries = set()
+        self.state_text = self.rate_text = ""
         self.link = LiveLink(scope, self)
         self.link.value.connect(self._value_received)
         self.link.refused.connect(self._refused)
@@ -809,6 +891,12 @@ class ScopePanel(QtWidgets.QWidget):
         self.link.start()
         self.set_connected(True)
         self._update_stream()
+
+    def channels_on(self) -> set[int]:
+        """The analog channels on, as last read from the scope. Empty without a connection: the boxes then mean nothing."""
+        if self.link is None:
+            return set()
+        return {channel for channel, box in self.channel_on.items() if box.isChecked()}
 
     def detach(self):
         if self.link is not None:
@@ -821,9 +909,11 @@ class ScopePanel(QtWidgets.QWidget):
         self.controls.setEnabled(connected)
         for button in self.action_buttons:
             button.setEnabled(connected)
-        if not connected:
-            self.state_label.clear()
-            self.rate_label.clear()
+        self.status_changed.emit()
+
+    def show_abort(self, stoppable):
+        self.abort_button.setEnabled(stoppable)
+        self.autoscale_place.setCurrentWidget(self.abort_button if stoppable else self.autoscale_button)
 
     def set_job_running(self, running):
         """A job has the link to itself. Afterwards everything is read again, since it may have changed settings."""
@@ -833,6 +923,8 @@ class ScopePanel(QtWidgets.QWidget):
                 self.link.read_all_once()
         for button in self.action_buttons:
             button.setEnabled(not running and self.link is not None)
+        self.job_running = running
+        self.status_changed.emit()
 
     def set_active(self, active):
         if self.link is not None:
@@ -877,15 +969,18 @@ class ScopePanel(QtWidgets.QWidget):
         self.report(tr("ERROR: {message}", message=tr("the scope refused {command}: {error}", command=command, error=error)))
 
     def _value_received(self, query, reply):
+        self.read_queries.add(query)
         if query == STATE_QUERY:
             name = STATE_NAMES.get(reply.replace("'", "").upper())
-            self.state_label.setText(tr(name) if name else reply)
+            self.state_text = tr(name) if name else reply
+            self.status_changed.emit()
             return
         if query == RATE_QUERY:
             try:
-                self.rate_label.setText(f"{float(reply) / 1e6:g} MSa/s")
+                self.rate_text = f"{float(reply) / 1e6:g} MSa/s"
             except ValueError:
                 pass
+            self.status_changed.emit()
             return
         for setting in self.settings.values():
             if setting.read == query:

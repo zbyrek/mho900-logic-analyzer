@@ -16,7 +16,7 @@ import numpy as np
 from . import siggen
 from .decoders.base import ParamSpec
 from .i18n import tr
-from .scope import Scope
+from .scope import Scope, record_file
 
 OUTPUTS = (1, 2)
 CLASSIC_CAN_FRAME_BYTES = 8
@@ -33,6 +33,7 @@ MAX_TIME_SCALE = 500.0
 LOGIC_LEVELS = (0.0, 3.3)
 CAN_HIGH_LEVELS = (2.5, 3.5)
 CAN_LOW_LEVELS = (1.5, 2.5)
+LOADS = (("High impedance (High-Z)", "OMEG"), ("50 Ω load", "FIFTy"))
 
 _ID_PARAM = ParamSpec("identifier", "Identifier (hex)", 0x123, maximum=0x1FFFFFFF, display_hex=True)
 _EXTENDED_PARAM = ParamSpec("extended", "Identifier format", False,
@@ -299,6 +300,43 @@ def play(scope: Scope, generated: Generated) -> None:
         for afg in OUTPUTS:
             scope.afg_enable(afg, False)
         raise ValueError(tr("The generator rejected the settings, outputs switched off: {errors}", errors="; ".join(problems)))
+
+
+def file_stem(protocol: str) -> str:
+    return protocol.lower().replace(" ", "_")
+
+
+def file_names(generated: Generated, stem: str) -> dict[int, str]:
+    """AFG output -> the name of the file with its record."""
+    return {afg: f"{stem}_{generated.labels[key].lower()}.csv" for afg, key in sorted(generated.outputs.items())}
+
+
+def record_files(generated: Generated, stem: str) -> dict[str, bytes]:
+    """File name -> content, one file per line in use. Values 0 and 1 become the low and high level through the output's amplitude and offset."""
+    names = file_names(generated, stem)
+    return {names[afg]: record_file(generated.lines[key]) for afg, key in generated.outputs.items()}
+
+
+def setup_text(generated: Generated, stem: str) -> str:
+    """How to set the generator to play the files, in the order the program itself sets it in afg_play."""
+    names = file_names(generated, stem)
+    load = tr(next(text for text, code in LOADS if code == generated.impedance))
+    blocks = []
+    for afg, key in sorted(generated.outputs.items()):
+        low, high = generated.levels[afg]
+        blocks.append("\n".join((
+            tr("AFG{afg}: line {line}", afg=afg, line=generated.labels[key]),
+            tr("  Output load: {load}", load=load),
+            tr("  Waveform: Arb, file {name}", name=names[afg]),
+            tr("  Frequency: {frequency:.6f} Hz", frequency=generated.afg_frequency),
+            tr("  Amplitude: {amplitude:g} Vpp", amplitude=high - low),
+            tr("  Offset: {offset:g} V", offset=(high + low) / 2))))
+    if len(generated.outputs) == 2:
+        blocks.append(tr("Run Align Phase once both outputs are set, so that the two lines start together."))
+    blocks.append(tr("Set the frequency, amplitude and offset after loading the file. The record has {samples} samples at {rate:.6g} MSa/s and repeats every {period:.6g} ms while the output is on.",
+                     samples=len(next(iter(generated.lines.values()))), rate=generated.sample_rate / 1e6, period=generated.period * 1e3))
+    blocks.append(tr("Put the files on a USB stick (D:/ on the scope) or in the scope's C:/arb folder (the arb folder over FTP)."))
+    return "\n\n".join(blocks)
 
 
 @dataclass
