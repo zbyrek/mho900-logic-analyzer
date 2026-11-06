@@ -80,7 +80,7 @@ class Decoder(ABC):
 def check_lengths(waves: dict) -> None:
     lengths = {len(wave.volts) for wave in waves.values()}
     if len(lengths) > 1:
-        raise ValueError(tr("Kanały mają różną długość: {lengths}", lengths=sorted(lengths)))
+        raise ValueError(tr("The channels differ in length: {lengths}", lengths=sorted(lengths)))
 
 
 def bits_to_int(bits, msb_first: bool = True) -> int:
@@ -97,8 +97,7 @@ def width(bits: int) -> int:
 
 def sampling_note(samples_per_bit: float, label: str) -> list[str]:
     if samples_per_bit < MIN_SAMPLES_PER_BIT:
-        return [tr("Za mało próbek na bit ({label}): {samples:.1f} (minimum {minimum}). "
-                   "Zwiększ częstotliwość próbkowania.",
+        return [tr("Too few samples per bit ({label}): {samples:.1f} (minimum {minimum}). Raise the sample rate.",
                    label=label, samples=samples_per_bit, minimum=MIN_SAMPLES_PER_BIT)]
     return []
 

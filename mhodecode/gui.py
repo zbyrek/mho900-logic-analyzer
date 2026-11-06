@@ -30,8 +30,8 @@ DEFAULT_HOST = "192.0.2.1"
 CHANNELS = (1, 2, 3, 4)
 FILE_FORMAT = "FILE"  # the read format that goes through the memory file instead of :WAVeform:DATA?
 DIGITAL_LEVELS = Thresholds(0.35, 0.65)  # digital samples are exactly 0 or 1
-DISPLAY_MODES = (("Logika", "logic"), ("Analog", "analog"))
-THEME_NAMES = (("Jasny", "light"), ("Ciemny", "dark"))
+DISPLAY_MODES = (("Logic", "logic"), ("Analog", "analog"))
+THEME_NAMES = (("Light", "light"), ("Dark", "dark"))
 MAX_TEXT_ITEMS = 120
 SEPARATOR_LABEL_POSITION = 0.95  # of the row's height
 TRIGGER_LINE_LABEL = "Trig"
@@ -66,14 +66,14 @@ MIN_ZOOM_SAMPLES = 8
 ZOOM_STEP = 2.0
 FIRST_CURSOR, SECOND_CURSOR = 1 / 3, 2 / 3
 HOVERED_CURSOR_WIDTH = 4
-DATA_FIELD_TIP = 'Hex: 0x48 0x65 albo 48 65. ASCII: "Hello" albo Hello.'
+DATA_FIELD_TIP = "Hex: 0x48 0x65 or 48 65. ASCII: \"Hello\" or Hello."
 LOG_LINES = 500
 VERBOSE_LOG_LINES = 20000
 SCOPE_TAB = 1
 CAPTURE_DIVISIONS = 10
 SINGLE_MARGIN_S = 10.0  # added to the capture length when waiting for a single acquisition
 DATA_FORMATS = (("Hex", "hex"), ("ASCII", "ascii"))
-LOADS = (("Wysoka impedancja (High-Z)", "OMEG"), ("Obciążenie 50 Ω", "FIFTy"))
+LOADS = (("High impedance (High-Z)", "OMEG"), ("50 Ω load", "FIFTy"))
 SETTINGS = ("MHO900Decoder", "MHO900Decoder")
 
 
@@ -105,7 +105,7 @@ class Worker(QtCore.QThread):
 
 
 class AnnotationModel(QtCore.QAbstractTableModel):
-    HEADERS = ("Czas [s]", "Długość [s]", "Linia", "Typ", "Dane", "Błąd")
+    HEADERS = ("Time [s]", "Length [s]", "Line", "Type", "Data", "Error")
 
     def __init__(self):
         super().__init__()
@@ -198,7 +198,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.garbage_collector = GarbageCollector()
         # Through the default format, so that tests can keep away from the user's real settings.
         self.settings = QtCore.QSettings(QtCore.QSettings.defaultFormat(), QtCore.QSettings.UserScope, *SETTINGS)
-        set_language(self.settings.value("language", "pl"))
+        set_language(self.settings.value("language", "en"))
         self.resize(1450, 900)
         self.theme_code = self.settings.value("theme", DEFAULT_THEME)
         if self.theme_code not in THEMES:
@@ -290,7 +290,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._apply_language()
 
     def _apply_language(self):
-        self.setWindowTitle(tr("MHO900 Dekoder protokołów {version}", version=__version__))
+        self.setWindowTitle(tr("MHO900 Protocol Decoder {version}", version=__version__))
         for setter, text in self.bindings:
             setter(tr(text) if text else "")
         self.model.retranslate()
@@ -332,12 +332,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cursor_overlay.hide()
         self.center_tabs = QtWidgets.QTabWidget()
         self.center_tabs.addTab(self.graphics, "")
-        self._bind(lambda text: self.center_tabs.setTabText(0, text), "Przebiegi")
+        self._bind(lambda text: self.center_tabs.setTabText(0, text), "Waveforms")
         self.panel = ScopePanel(self)
         self.panel.message.connect(self._log)
         self.screen_view = self.panel.screen_view
         self.center_tabs.addTab(self.panel, "")
-        self._bind(lambda text: self.center_tabs.setTabText(SCOPE_TAB, text), "Oscyloskop")
+        self._bind(lambda text: self.center_tabs.setTabText(SCOPE_TAB, text), "Oscilloscope")
         self.center_tabs.currentChanged.connect(self._screen_tab_shown)
         self.setCentralWidget(self.center_tabs)
 
@@ -361,10 +361,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lane_menu = QtWidgets.QMenu(self)
         self.lane_menu_card = None
         self.lane_settings_action = self.lane_menu.addAction("")
-        self._bind(self.lane_settings_action.setText, "Ustawienia dekodera")
+        self._bind(self.lane_settings_action.setText, "Decoder settings")
         self.lane_settings_action.triggered.connect(lambda: self.lane_menu_card.config_window.open())
         self.lane_delete_action = self.lane_menu.addAction("")
-        self._bind(self.lane_delete_action.setText, "Usuń dekoder")
+        self._bind(self.lane_delete_action.setText, "Delete decoder")
         self.lane_delete_action.triggered.connect(lambda: self.remove_decoder(self.lane_menu_card))
 
     def _build_log_window(self):
@@ -372,10 +372,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bind(self.log_window.setWindowTitle, "Log")
         self.log = self.log_window.view
         self.verbose = self.log_window.verbose
-        self._bind(self.verbose.setText, "Szczegółowy (verbose)")
-        self._bind(self.log_window.clear_button.setText, "Wyczyść")
-        self._bind(self.log_window.clear_button.setToolTip, "Czyści okno logu.")
-        self._bind(self.verbose.setToolTip, "Dopisuje do logu każdą wymianę z oscyloskopem.")
+        self._bind(self.verbose.setText, "Detailed (verbose)")
+        self._bind(self.log_window.clear_button.setText, "Clear")
+        self._bind(self.log_window.clear_button.setToolTip, "Clears the log window.")
+        self._bind(self.verbose.setToolTip, "Adds every exchange with the scope to the log.")
         self.verbose.setChecked(self.settings.value("verbose", False, type=bool))
         self.verbose.toggled.connect(self._verbose_changed)
         self._verbose_changed(self.verbose.isChecked())
@@ -389,14 +389,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_toolbars(self):
         style = self.style()
-        device = self._toolbar("device_bar", "Połączenie")
+        device = self._toolbar("device_bar", "Connection")
         self.host = QtWidgets.QLineEdit(self.settings.value("host", DEFAULT_HOST))
         self.host.setMaximumWidth(150)
         self.connect_button = QtWidgets.QPushButton()
         self.connect_button.clicked.connect(self._toggle_connection)
-        self._bind(self.connect_button.setToolTip, "Łączy z oscyloskopem pod podanym adresem IP albo rozłącza.")
+        self._bind(self.connect_button.setToolTip, "Connects to the scope at the given IP address, or disconnects.")
         self.connection_state = QtWidgets.QLabel()
-        device.addWidget(self._label("Adres IP:"))
+        device.addWidget(self._label("IP address:"))
         device.addWidget(self.host)
         device.addWidget(self.connect_button)
         device.addWidget(self.connection_state)
@@ -414,20 +414,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.single_button.setObjectName("primary")
         self.single_button.setIcon(style.standardIcon(QtWidgets.QStyle.SP_MediaPlay))
         self.single_button.setShortcut("F5")
-        self._bind(self.single_button.setToolTip, "Ustawia oscyloskop według Ustawień oscyloskopu z paska, wykonuje jedną akwizycję, czyta i dekoduje (F5).")
-        self.read_button = self._busy_button("Czytaj pamięć", self._read_memory, needs_scope=True)
-        self._bind(self.read_button.setToolTip, "Zatrzymuje oscyloskop i dekoduje to, co jest w jego pamięci, bez zmiany jego ustawień.")
-        self.autoscale_button = self._busy_button("Autoskala", self._autoscale, needs_scope=True)
-        self._bind(self.autoscale_button.setToolTip, "Dopasowuje zakresy używanych kanałów i ustawia wyzwalanie.")
+        self._bind(self.single_button.setToolTip, "Sets the scope up from the Scope settings on the toolbar, runs one acquisition, reads and decodes (F5).")
+        self.read_button = self._busy_button("Read memory", self._read_memory, needs_scope=True)
+        self._bind(self.read_button.setToolTip, "Stops the scope and decodes what is in its memory, without changing its settings.")
+        self.autoscale_button = self._busy_button("Autoscale", self._autoscale, needs_scope=True)
+        self._bind(self.autoscale_button.setToolTip, "Fits the ranges of the channels in use and sets the trigger.")
         self.repeat_button = QtWidgets.QCheckBox()
-        self._bind(self.repeat_button.setText, "Powtarzaj")
-        self._bind(self.repeat_button.setToolTip, "Po każdym dekodowaniu kolejna akwizycja, aż do wyłączenia lub przerwania. Nowe próbki trafiają dalej na osi czasu, za separatorem, a dekoder czyta każdą akwizycję osobno.")
+        self._bind(self.repeat_button.setText, "Repeat")
+        self._bind(self.repeat_button.setToolTip, "After each decoding another acquisition, until turned off or aborted. New samples go further along the time axis, behind a separator, and decoders read each acquisition on its own.")
         self.abort_button = QtWidgets.QPushButton()
         self.abort_button.setObjectName("abort")
         self.abort_button.setIcon(style.standardIcon(QtWidgets.QStyle.SP_MediaStop))
         self.abort_button.setShortcut("Esc")
-        self._bind(self.abort_button.setText, "Przerwij")
-        self._bind(self.abort_button.setToolTip, "Przerywa trwającą operację i wyłącza Powtarzaj (Esc).")
+        self._bind(self.abort_button.setText, "Abort")
+        self._bind(self.abort_button.setToolTip, "Stops the running operation and turns Repeat off (Esc).")
         self.abort_button.setEnabled(False)
         self.abort_button.clicked.connect(self._abort)
         self.run_place = QtWidgets.QStackedWidget()  # Run gives way to Abort while something can be stopped
@@ -440,19 +440,19 @@ class MainWindow(QtWidgets.QMainWindow):
         device.addWidget(self.autoscale_button)
         device.addSeparator()
 
-        self.zoom_in_button = self._view_button(device, "+", self._zoom_in, "Powiększ (kółko myszy)", "Ctrl+=")
-        self.zoom_out_button = self._view_button(device, "−", self._zoom_out, "Pomniejsz (kółko myszy)", "Ctrl+-")
-        self.zoom_fit_button = self._view_button(device, "", self.zoom_fit, "Pokaż cały zapis", "Ctrl+0")
-        self._bind(self.zoom_fit_button.setText, "Całość")
+        self.zoom_in_button = self._view_button(device, "+", self._zoom_in, "Zoom in (mouse wheel)", "Ctrl+=")
+        self.zoom_out_button = self._view_button(device, "−", self._zoom_out, "Zoom out (mouse wheel)", "Ctrl+-")
+        self.zoom_fit_button = self._view_button(device, "", self.zoom_fit, "Show the whole capture", "Ctrl+0")
+        self._bind(self.zoom_fit_button.setText, "Fit")
         self.display_mode = QtWidgets.QComboBox()
         self._fill_combo(self.display_mode, DISPLAY_MODES)
         self.display_mode.setCurrentIndex(max(0, self.display_mode.findData(self.settings.value("display_mode", "logic"))))
         self.display_mode.currentIndexChanged.connect(self._display_mode_changed)
-        self._bind(self.display_mode.setToolTip, "Logika: stany po progu, jak w analizatorze. Analog: napięcia z oscyloskopu.")
+        self._bind(self.display_mode.setToolTip, "Logic: states after the threshold, as in a logic analyzer. Analog: the scope's voltages.")
         device.addWidget(self.display_mode)
         self.cursors_button = QtWidgets.QPushButton()
-        self._bind(self.cursors_button.setText, "Kursory")
-        self._bind(self.cursors_button.setToolTip, "Dwa kursory: strzałka między nimi podaje czas i częstotliwość. Przeciągaj linie albo flagi A i B.")
+        self._bind(self.cursors_button.setText, "Cursors")
+        self._bind(self.cursors_button.setToolTip, "Two cursors: the arrow between them gives the time and frequency. Drag the lines or the A and B flags.")
         self.cursors_button.setCheckable(True)
         self.cursors_button.toggled.connect(self._cursors_toggled)
         device.addWidget(self.cursors_button)
@@ -486,14 +486,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_sidebar(self):
         self.sidebar_tabs = QtWidgets.QTabWidget()
         self.sidebar_tabs.setMinimumWidth(PANEL_WIDTH)
-        pages = (("Dekoder", self._decoder_controls()), ("Generator", self._generator_controls()))
+        pages = (("Decoder", self._decoder_controls()), ("Generator", self._generator_controls()))
         self.decoder_page, self.generator_page = pages[0][1], pages[1][1]
         for position, (title, page) in enumerate(pages):
             self.sidebar_tabs.addTab(self._scrolled(page), "")
             self._bind(lambda text, position=position: self.sidebar_tabs.setTabText(position, text), title)
             for combo in page.findChildren(QtWidgets.QComboBox):
                 compact(combo)
-        self.sidebar_dock = self._dock("sidebar", "Dekoder i generator", self.sidebar_tabs, QtCore.Qt.RightDockWidgetArea)
+        self.sidebar_dock = self._dock("sidebar", "Decoder and generator", self.sidebar_tabs, QtCore.Qt.RightDockWidgetArea)
 
     def _build_results(self):
         self.model = AnnotationModel()
@@ -514,28 +514,28 @@ class MainWindow(QtWidgets.QMainWindow):
         bar = QtWidgets.QHBoxLayout()
         self.result_search = QtWidgets.QLineEdit()
         self.result_search.setClearButtonEnabled(True)
-        self._bind(self.result_search.setPlaceholderText, "Szukaj w wynikach")
+        self._bind(self.result_search.setPlaceholderText, "Search the results")
         self.result_search.textChanged.connect(self._apply_row_filter)
         bar.addWidget(self.result_search, 2)
         self.row_filter_bar = QtWidgets.QWidget()
         filter_layout = QtWidgets.QHBoxLayout(self.row_filter_bar)
         filter_layout.setContentsMargins(0, 0, 0, 0)
-        filter_layout.addWidget(self._label("Wiersz:"))
+        filter_layout.addWidget(self._label("Row:"))
         self.row_filter = QtWidgets.QComboBox()
         self.row_filter.currentIndexChanged.connect(self._apply_row_filter)
         filter_layout.addWidget(self.row_filter, 1)
         self.row_filter_bar.hide()
         bar.addWidget(self.row_filter_bar, 2)
         self.result_errors = QtWidgets.QCheckBox()
-        self._bind(self.result_errors.setText, "Tylko błędy")
-        self._bind(self.result_errors.setToolTip, "Pokazuje w tabeli tylko wiersze z błędem.")
+        self._bind(self.result_errors.setText, "Errors only")
+        self._bind(self.result_errors.setToolTip, "Shows only the rows with an error in the table.")
         self.result_errors.toggled.connect(self._apply_row_filter)
         bar.addWidget(self.result_errors)
         self.result_count = QtWidgets.QLabel()
         bar.addWidget(self.result_count)
         layout.addLayout(bar)
         layout.addWidget(self.table, 1)
-        self.results_dock = self._dock("results", "Wyniki dekodowania", page, QtCore.Qt.BottomDockWidgetArea)
+        self.results_dock = self._dock("results", "Decoding results", page, QtCore.Qt.BottomDockWidgetArea)
 
     def _build_status_bar(self):
         self.cursor_readout = QtWidgets.QLabel()
@@ -548,39 +548,39 @@ class MainWindow(QtWidgets.QMainWindow):
         # With the log in its own window, this keeps the latest message and any error in sight.
         self.last_message = QtWidgets.QPushButton()
         self.last_message.setFlat(True)
-        self._bind(self.last_message.setToolTip, "Otwórz log")
+        self._bind(self.last_message.setToolTip, "Open the log")
         self.last_message.clicked.connect(self.show_log)
         self.statusBar().addPermanentWidget(self.last_message)
 
     def _build_menu(self):
         files = self.menuBar().addMenu("")
-        self._bind(files.setTitle, "Plik")
-        for text, slot, shortcut in (("Otwórz przebiegi", self._open_waves, "Ctrl+O"),
-                                     ("Zapisz przebiegi", self._save_waves, "Ctrl+S"),
-                                     ("Eksport wyników CSV", self._export_csv, "Ctrl+E")):
+        self._bind(files.setTitle, "File")
+        for text, slot, shortcut in (("Open waveforms", self._open_waves, "Ctrl+O"),
+                                     ("Save waveforms", self._save_waves, "Ctrl+S"),
+                                     ("Export results to CSV", self._export_csv, "Ctrl+E")):
             action = files.addAction("")
             self._bind(action.setText, text)
             action.setShortcut(shortcut)
             action.triggered.connect(slot)
         files.addSeparator()
         close = files.addAction("")
-        self._bind(close.setText, "Zakończ")
+        self._bind(close.setText, "Exit")
         close.triggered.connect(self.close)
 
         view = self.menuBar().addMenu("")
-        self._bind(view.setTitle, "Widok")
+        self._bind(view.setTitle, "View")
         results = view.addAction("")
-        self._bind(results.setText, "Przebiegi")
+        self._bind(results.setText, "Waveforms")
         results.triggered.connect(lambda: self.center_tabs.setCurrentIndex(0))
         screen = view.addAction("")
-        self._bind(screen.setText, "Oscyloskop")
+        self._bind(screen.setText, "Oscilloscope")
         screen.triggered.connect(lambda: self.center_tabs.setCurrentIndex(SCOPE_TAB))
         view.addSeparator()
         view.addAction(self.sidebar_dock.toggleViewAction())
         view.addAction(self.results_dock.toggleViewAction())
         view.addSeparator()
         themes = view.addMenu("")
-        self._bind(themes.setTitle, "Motyw")
+        self._bind(themes.setTitle, "Theme")
         theme_group = QtWidgets.QActionGroup(self)
         self.theme_actions = {}
         for name, code in THEME_NAMES:
@@ -593,9 +593,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.theme_actions[code] = action
 
         advanced = self.menuBar().addMenu("")
-        self._bind(advanced.setTitle, "Zaawansowane")
+        self._bind(advanced.setTitle, "Advanced")
         self.test_action = advanced.addAction("")
-        self._bind(self.test_action.setText, "Odbiór i porównanie danych")
+        self._bind(self.test_action.setText, "Receiving and comparing data")
         self.test_action.triggered.connect(self.show_test_window)
         advanced.addSeparator()
         log = advanced.addAction("")
@@ -603,14 +603,14 @@ class MainWindow(QtWidgets.QMainWindow):
         log.setShortcut("Ctrl+L")
         log.triggered.connect(self.show_log)
         verbose = advanced.addAction("")
-        self._bind(verbose.setText, "Szczegółowy log (verbose)")
+        self._bind(verbose.setText, "Detailed log (verbose)")
         verbose.setCheckable(True)
         verbose.setChecked(self.verbose.isChecked())
         verbose.toggled.connect(self.verbose.setChecked)
         self.verbose.toggled.connect(verbose.setChecked)
 
         languages = self.menuBar().addMenu("")
-        self._bind(languages.setTitle, "Język")
+        self._bind(languages.setTitle, "Language")
         group = QtWidgets.QActionGroup(self)
         for code, name in LANGUAGES:
             action = languages.addAction(name)
@@ -619,9 +619,9 @@ class MainWindow(QtWidgets.QMainWindow):
             action.triggered.connect(lambda _checked, code=code: self._set_language(code))
             group.addAction(action)
         help_menu = self.menuBar().addMenu("")
-        self._bind(help_menu.setTitle, "Pomoc")
+        self._bind(help_menu.setTitle, "Help")
         about = help_menu.addAction("")
-        self._bind(about.setText, "O programie i licencjach")
+        self._bind(about.setText, "About and licenses")
         about.triggered.connect(self._show_about)
 
     def show_test_window(self):
@@ -654,12 +654,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._plot()
 
     def _show_about(self):
-        QtWidgets.QMessageBox.about(self, tr("O programie i licencjach"), tr(
-            "MHO900 Dekoder protokołów {version}. Zawiera {count} dekoderów z projektu libsigrokdecode (sigrok.org), "
-            "bez zmian, na licencjach GPLv2+, GPLv3+, BSD i MIT. Tekst GPLv3 i lista autorów są w folderze srd_decoders. "
-            "Układ panelu dekoderów jest wzorowany na programie PulseView (GPLv3). "
-            "Program rozprowadzany razem z nimi podlega licencji GNU GPL w wersji 3 lub nowszej, "
-            "bez żadnej gwarancji, a odbiorca ma prawo do kodu źródłowego.",
+        QtWidgets.QMessageBox.about(self, tr("About and licenses"), tr(
+            "MHO900 Protocol Decoder {version}. Contains {count} decoders from the libsigrokdecode project (sigrok.org), unmodified, under the GPLv2+, GPLv3+, BSD and MIT licenses. The GPLv3 text and the list of authors are in the srd_decoders folder. The layout of the decoder panel follows PulseView (GPLv3).Distributed together with them, this program falls under the GNU GPL version 3 or later, without any warranty, and its recipients have a right to the source code.",
             version=__version__, count=len(SIGROK)))
 
     def _group(self, title):
@@ -671,14 +667,14 @@ class MainWindow(QtWidgets.QMainWindow):
         page = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        library = self._group("Dekodery")
+        library = self._group("Decoders")
         library_layout = QtWidgets.QVBoxLayout(library)
         self.decoder_search = QtWidgets.QLineEdit()
         self.decoder_search.setClearButtonEnabled(True)
-        self._bind(self.decoder_search.setPlaceholderText, "Szukaj: nazwa, opis, kategoria")
+        self._bind(self.decoder_search.setPlaceholderText, "Search: name, description, category")
         library_layout.addWidget(self.decoder_search)
         sorting = QtWidgets.QHBoxLayout()
-        sorting.addWidget(self._label("Sortuj:"))
+        sorting.addWidget(self._label("Sort:"))
         self.decoder_sort = QtWidgets.QComboBox()
         sorting.addWidget(self.decoder_sort, 1)
         library_layout.addLayout(sorting)
@@ -694,10 +690,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.decoder_details = QtWidgets.QLabel()
         self.decoder_details.setWordWrap(True)
         library_layout.addWidget(self.decoder_details)
-        hint = self._label("Przeciągnij dekoder na przebiegi albo kliknij go dwukrotnie: każdy dodaje się jako kolejny. "
-                           "Upuszczony na pas dekodera, do którego pasuje, trafia na jego stos. "
-                           "Kliknięcie etykiety pasu otwiera ustawienia dekodera, a prawy klawisz na pasie daje menu "
-                           "z ustawieniami i usuwaniem.")
+        hint = self._label("Drag a decoder onto the waveforms or double-click it: each one is added as a further decoder. Dropped on the trace of a decoder it fits, it goes on that stack. Clicking a trace's label opens the decoder's settings, and right-clicking the trace gives a menu with the settings and deleting.")
         hint.setWordWrap(True)
         library_layout.addWidget(hint)
         layout.addWidget(library, 1)
@@ -706,8 +699,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _fill_decoder_sort(self):
         self.decoder_sort.blockSignals(True)
         self.decoder_sort.clear()
-        self.decoder_sort.addItem(tr("Kategorie"), SORT_CATEGORY)
-        self.decoder_sort.addItem(tr("Protokół nadrzędny"), SORT_PARENT)
+        self.decoder_sort.addItem(tr("Categories"), SORT_CATEGORY)
+        self.decoder_sort.addItem(tr("Parent protocol"), SORT_PARENT)
         self.decoder_sort.setCurrentIndex(max(0, self.decoder_sort.findData(self.decoder_tree.sort_mode)))
         self.decoder_sort.blockSignals(False)
 
@@ -728,10 +721,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.decoder_details.clear()
             return
         info = SIGROK[decoder_id]
-        lines = [f"{info.longname}. {info.desc}", tr("Licencja: {license}", license=info.license)]
+        lines = [f"{info.longname}. {info.desc}", tr("License: {license}", license=info.license)]
         chain = base_chain(info.id, SIGROK)
         if len(chain) > 1:
-            lines.append(tr("Wymaga dekodera bazowego. Zostanie zbudowany stos: {chain}.", chain=" → ".join(chain)))
+            lines.append(tr("Needs a base decoder. This stack will be built: {chain}.", chain=" → ".join(chain)))
         self.decoder_details.setText("\n".join(lines))
 
     # ---- decoders in use ------------------------------------------------
@@ -742,7 +735,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if card is not None and card.fits(decoder_id):
             card.push(decoder_id)
             self.set_active_card(card)
-            self._log(tr("Stos dekoderów: {chain}.", chain=" → ".join(card.chain())))
+            self._log(tr("Decoder stack: {chain}.", chain=" → ".join(card.chain())))
             return card
         return self.select_sigrok(decoder_id)
 
@@ -753,7 +746,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for upper in chain[1:]:
             card.push(upper)
         if len(chain) > 1:
-            self._log(tr("Stos dekoderów: {chain}.", chain=" → ".join(chain)))
+            self._log(tr("Decoder stack: {chain}.", chain=" → ".join(chain)))
         self._show_fitting()
         return card
 
@@ -835,7 +828,7 @@ class MainWindow(QtWidgets.QMainWindow):
         page = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(page)
 
-        signal = self._group("Generuj sygnał dla urządzenia")
+        signal = self._group("Generate a signal for the device")
         signal_layout = QtWidgets.QVBoxLayout(signal)
         form = QtWidgets.QFormLayout()
         self.gen_protocol = QtWidgets.QComboBox()
@@ -847,9 +840,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.gen_data = QtWidgets.QLineEdit("0x48 0x65 0x6C 0x6C 0x6F")
         self._bind(self.gen_data.setToolTip, DATA_FIELD_TIP)
         self._gen_data_format_shown = "hex"
-        form.addRow(self._label("Protokół"), self.gen_protocol)
-        form.addRow(self._label("Format danych"), self.gen_data_format)
-        form.addRow(self._label("Dane"), self.gen_data)
+        form.addRow(self._label("Protocol"), self.gen_protocol)
+        form.addRow(self._label("Data format"), self.gen_data_format)
+        form.addRow(self._label("Data"), self.gen_data)
         signal_layout.addLayout(form)
         self.gen_form_holder = QtWidgets.QVBoxLayout()
         signal_layout.addLayout(self.gen_form_holder)
@@ -859,8 +852,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         levels = QtWidgets.QGridLayout()
         self.gen_levels = {}
-        levels.addWidget(self._label("Poziom niski"), 0, 1)
-        levels.addWidget(self._label("Poziom wysoki"), 0, 2)
+        levels.addWidget(self._label("Low level"), 0, 1)
+        levels.addWidget(self._label("High level"), 0, 2)
         for row, afg in enumerate(generator.OUTPUTS, start=1):
             levels.addWidget(QtWidgets.QLabel(f"AFG{afg}"), row, 0)
             low, high = QtWidgets.QDoubleSpinBox(), QtWidgets.QDoubleSpinBox()
@@ -876,16 +869,15 @@ class MainWindow(QtWidgets.QMainWindow):
         load_form = QtWidgets.QFormLayout()
         self.gen_load = QtWidgets.QComboBox()
         self._fill_combo(self.gen_load, LOADS)
-        load_form.addRow(self._label("Obciążenie wyjść"), self.gen_load)
+        load_form.addRow(self._label("Output load"), self.gen_load)
         signal_layout.addLayout(load_form)
-        note = self._label("Wyjście powtarza rekord w pętli, dopóki jest włączone. "
-                           "Przed podłączeniem urządzenia sprawdź poziomy napięć.")
+        note = self._label("The output repeats the record in a loop while it is on. Check the voltage levels before connecting a device.")
         note.setWordWrap(True)
         signal_layout.addWidget(note)
-        self.gen_button = self._busy_button("Generuj", self._generate, needs_scope=True)
-        self._bind(self.gen_button.setToolTip, "Ładuje sygnał na wyjścia AFG i je włącza.")
-        self.afg_off_button = self._busy_button("Wyłącz wyjścia", self._afg_off, needs_scope=True)
-        self._bind(self.afg_off_button.setToolTip, "Wyłącza wyjścia AFG1 i AFG2.")
+        self.gen_button = self._busy_button("Generate", self._generate, needs_scope=True)
+        self._bind(self.gen_button.setToolTip, "Loads the signal onto the AFG outputs and turns them on.")
+        self.afg_off_button = self._busy_button("Switch outputs off", self._afg_off, needs_scope=True)
+        self._bind(self.afg_off_button.setToolTip, "Turns the AFG1 and AFG2 outputs off.")
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(self.gen_button)
         buttons.addWidget(self.afg_off_button)
@@ -898,28 +890,28 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_test_window(self):
         """Checking a device's response: a test of its own, reached from the Advanced menu."""
         self.test_window = QtWidgets.QWidget(self, QtCore.Qt.Window)
-        self._bind(self.test_window.setWindowTitle, "Odbiór i porównanie danych")
+        self._bind(self.test_window.setWindowTitle, "Receiving and comparing data")
         layout = QtWidgets.QVBoxLayout(self.test_window)
-        receive = self._group("Odbierz odpowiedź")
+        receive = self._group("Receive the response")
         receive_layout = QtWidgets.QVBoxLayout(receive)
-        info = self._label("Odbiór używa kanałów dekodera i Ustawień oscyloskopu z paska.")
+        info = self._label("Receiving uses the decoder's channels and the Scope settings on the toolbar.")
         info.setWordWrap(True)
         receive_layout.addWidget(info)
         self.match_button = QtWidgets.QPushButton()
-        self._bind(self.match_button.setText, "Ustaw dekoder i podstawę czasu wg generatora")
-        self._bind(self.match_button.setToolTip, "Kanał każdej linii ustawia zgodnie z numerem wyjścia AFG (AFG1 na CH1).")
+        self._bind(self.match_button.setText, "Set the decoder and time base from the generator")
+        self._bind(self.match_button.setToolTip, "Sets the channel of each line by the number of its AFG output (AFG1 on CH1).")
         self.match_button.clicked.connect(self._match_decoder)
         receive_layout.addWidget(self.match_button)
-        self.receive_button = self._busy_button("Odbierz", self._acquire, needs_scope=True)
-        self._bind(self.receive_button.setToolTip, "Jedna akwizycja, odczyt i dekodowanie, tak samo jak przycisk Run.")
+        self.receive_button = self._busy_button("Receive", self._acquire, needs_scope=True)
+        self._bind(self.receive_button.setToolTip, "One acquisition, reading and decoding, the same as the Run button.")
         receive_layout.addWidget(self.receive_button)
         layout.addWidget(receive)
 
-        check = self._group("Porównaj z oczekiwanymi danymi")
+        check = self._group("Compare with the expected data")
         check_layout = QtWidgets.QVBoxLayout(check)
         self.expect_sent = QtWidgets.QCheckBox()
-        self._bind(self.expect_sent.setText, "Oczekuj danych wysłanych przez generator")
-        self._bind(self.expect_sent.setToolTip, "Po odznaczeniu oczekiwane dane wpisujesz w polu poniżej.")
+        self._bind(self.expect_sent.setText, "Expect the data sent by the generator")
+        self._bind(self.expect_sent.setToolTip, "When unchecked, you type the expected data in the field below.")
         self.expect_sent.setChecked(True)
         check_layout.addWidget(self.expect_sent)
         row = QtWidgets.QHBoxLayout()
@@ -935,8 +927,8 @@ class MainWindow(QtWidgets.QMainWindow):
         row.addWidget(self.expected_data, 1)
         check_layout.addLayout(row)
         self.compare_button = QtWidgets.QPushButton()
-        self._bind(self.compare_button.setText, "Porównaj")
-        self._bind(self.compare_button.setToolTip, "Szuka oczekiwanych danych w wynikach wszystkich dekoderów.")
+        self._bind(self.compare_button.setText, "Compare")
+        self._bind(self.compare_button.setToolTip, "Looks for the expected data in the results of all decoders.")
         self.compare_button.clicked.connect(self._compare)
         check_layout.addWidget(self.compare_button)
         self.compare_label = QtWidgets.QLabel()
@@ -961,17 +953,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.connect_button.setEnabled(not running)
         self.abort_button.setEnabled(running and self.abortable)
         self.run_place.setCurrentWidget(self.abort_button if running and self.abortable else self.single_button)
-        self.connect_button.setText(tr("Rozłącz") if self.scope else tr("Połącz"))
+        self.connect_button.setText(tr("Disconnect") if self.scope else tr("Connect"))
 
     abortable = False
     last_triggered = None
     docks_shown: dict = {}
 
     def _show_status(self):
-        self.statusBar().showMessage(tr("Gotowe") if self.scope else tr("Niepołączono"))
-        self.connect_button.setText(tr("Rozłącz") if self.scope else tr("Połącz"))
+        self.statusBar().showMessage(tr("Ready") if self.scope else tr("Not connected"))
+        self.connect_button.setText(tr("Disconnect") if self.scope else tr("Connect"))
         color = self.theme.ok_text if self.scope else self.theme.error_text
-        self.connection_state.setText(f"● {tr('Połączono') if self.scope else tr('Niepołączono')}")
+        self.connection_state.setText(f"● {tr('Connected') if self.scope else tr('Not connected')}")
         self.connection_state.setStyleSheet(f"color: {color};")
 
     # ---- generator forms ------------------------------------------------
@@ -1010,11 +1002,11 @@ class MainWindow(QtWidgets.QMainWindow):
         for row, (key, label) in enumerate(lines):
             combo = QtWidgets.QComboBox()
             compact(combo)
-            combo.addItem(tr("nieużywana"), None)
+            combo.addItem(tr("not used"), None)
             for afg in generator.OUTPUTS:
                 combo.addItem(f"AFG{afg}", afg)
             combo.setCurrentIndex(combo.findData(generator.OUTPUTS[row]))
-            self.gen_line_grid.addWidget(QtWidgets.QLabel(tr("Linia {label}", label=label)), row, 0)
+            self.gen_line_grid.addWidget(QtWidgets.QLabel(tr("Line {label}", label=label)), row, 0)
             self.gen_line_grid.addWidget(combo, row, 1)
             self.gen_line_combos[key] = combo
             low, high = generator.default_levels(key, params)
@@ -1080,21 +1072,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.repeat_button.setChecked(False)
         abort.request()
         self.abort_button.setEnabled(False)
-        self.statusBar().showMessage(tr("Przerywanie…"))
+        self.statusBar().showMessage(tr("Aborting…"))
 
     def _job_failed(self, message):
         self.after_job = None
         self.repeat_button.setChecked(False)
-        self._log(tr("BŁĄD: {message}", message=message))
+        self._log(tr("ERROR: {message}", message=message))
         QtWidgets.QApplication.beep()
 
     def _job_aborted(self):
         self.after_job = None
         if not (self.decoding and self.decode_pending):  # a decoding replaced by a newer one is not news
-            self._log(tr("Przerwano: {label}", label=self.job_label))
+            self._log(tr("Aborted: {label}", label=self.job_label))
 
     def _job_finished(self):
-        self._verbose(tr("Koniec: {label}, {seconds:.3f} s", label=self.job_label, seconds=time.monotonic() - self.job_started))
+        self._verbose(tr("End: {label}, {seconds:.3f} s", label=self.job_label, seconds=time.monotonic() - self.job_started))
         self.worker = None
         self.decoding = False
         self.panel.set_job_running(False)
@@ -1119,9 +1111,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _style_last_message(self):
         text = self.last_message_text
-        if text.startswith(("BŁĄD", "ERROR")):
+        # Both spellings: a message stays in the language it was written in after a switch.
+        if text.startswith(("ERROR", "BŁĄD")):
             color = self.theme.error_text
-        elif text.startswith(("Uwaga", "Warning")):
+        elif text.startswith(("Warning", "Uwaga")):
             color = self.theme.warning_text
         else:
             color = None
@@ -1158,18 +1151,18 @@ class MainWindow(QtWidgets.QMainWindow):
             scope.trace = self._scope_trace
             return scope, scope.connect()
 
-        self._start(job, self._connected, tr("Łączenie z {host}…", host=host), uses_scope=False, abortable=False)
+        self._start(job, self._connected, tr("Connecting to {host}…", host=host), uses_scope=False, abortable=False)
 
     def _connected(self, result):
         self.scope, identity = result
-        self._log(tr("Połączono: {identity}", identity=identity))
+        self._log(tr("Connected: {identity}", identity=identity))
         self.panel.attach(self.scope)
 
     def _used_channels(self):
         """What is chosen on the toolbar and what the decoders need."""
         channels = self.scope_settings.selected() | {channel for card in self.cards for channel in card.mapping().values()}
         if not channels:
-            raise ValueError(tr("Wybierz kanały w Ustawieniach oscyloskopu na pasku albo dodaj dekoder."))
+            raise ValueError(tr("Choose channels in the Scope settings on the toolbar or add a decoder."))
         return sorted(channels)
 
     def _read_job(self, channels, progress, sample_format):
@@ -1185,7 +1178,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 def report(done, total, channel=channel, started=started):
                     speed = done / max(time.monotonic() - started, 1e-3) / 1e6
-                    progress(tr("Odczyt CH{channel}: {done:,} / {total:,} punktów, {speed:.2f} Mpt/s",
+                    progress(tr("Reading CH{channel}: {done:,} / {total:,} points, {speed:.2f} Mpt/s",
                                 channel=channel, done=done, total=total, speed=speed))
 
                 waves[channel] = self.scope.fetch(channel, progress=report, sample_format=sample_format)
@@ -1202,8 +1195,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _read_file_job(self, channels, digital_wanted, progress):
         """Everything the scope has in memory comes in one file, so all of it is kept, but of the
         digital channels only the assigned ones and those that change: 16 flat lines help nobody."""
-        progress(tr("Oscyloskop zapisuje pamięć do pliku…"))
-        data = self.scope.save_memory(lambda done: progress(tr("Pobieranie pliku: {size:.1f} MB", size=done / 1e6)))
+        progress(tr("The scope is saving its memory to a file…"))
+        data = self.scope.save_memory(lambda done: progress(tr("Downloading the file: {size:.1f} MB", size=done / 1e6)))
         return rigol_files.parse_bin(data, digital_wanted).waves
 
     def _acquire(self, keep_old=False):
@@ -1211,13 +1204,13 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             channels = self._used_channels()
         except ValueError as exc:
-            self._log(tr("BŁĄD: {message}", message=exc))
+            self._log(tr("ERROR: {message}", message=exc))
             return
         settings = self.scope_settings
         try:
             commands = settings.trigger_commands(self._trigger_levels())
         except ValueError as exc:
-            self._log(tr("BŁĄD: {message}", message=exc))
+            self._log(tr("ERROR: {message}", message=exc))
             return
         plan = CapturePlan(set(channels), self.force_dc.isChecked(), settings.depth.currentData(), settings.time_scale.currentData(),
                            tuple(commands), settings.pod_thresholds(), settings.pretrigger())
@@ -1228,7 +1221,7 @@ class MainWindow(QtWidgets.QMainWindow):
         def job(progress):
             scope = self.scope
             notes = scope.apply_plan(plan)
-            progress(tr("Czekam na wyzwolenie…") if wait else tr("Akwizycja…"))
+            progress(tr("Waiting for the trigger…") if wait else tr("Acquiring…"))
             if wait:
                 triggered = scope.single(timeout=None, force_after=None)
             else:
@@ -1239,18 +1232,18 @@ class MainWindow(QtWidgets.QMainWindow):
             return triggered, waves, states
 
         self.after_job = self._decode
-        self._start(job, lambda result: self._captured(result, keep_old), tr("Akwizycja…"))
+        self._start(job, lambda result: self._captured(result, keep_old), tr("Acquiring…"))
 
     def _append_capture(self, waves):
         """False: the new capture does not fit the old samples on one time axis, so it starts anew."""
         if not waves:
             return True
         if not segments.can_join(self.waves, waves):
-            self._log(tr("Uwaga: inne kanały lub inna częstotliwość próbkowania niż w poprzedniej akwizycji, więc odczyt zaczyna się od nowa."))
+            self._log(tr("Warning: other channels or another sample rate than in the previous acquisition, so the record starts anew."))
             return False
         if segments.kept_bytes(self.waves) + segments.kept_bytes(waves) > segments.MAX_KEPT_BYTES:
             self.repeat_button.setChecked(False)
-            self._log(tr("Uwaga: Powtarzaj wyłączone, bo próbki zajęłyby ponad {limit:.0f} GB. Ostatniej akwizycji nie dołączono.",
+            self._log(tr("Warning: Repeat turned off, as the samples would take over {limit:.0f} GB. The last acquisition was not added.",
                          limit=segments.MAX_KEPT_BYTES / 1e9))
             self.after_job = None
             return True
@@ -1287,7 +1280,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             channels = self._used_channels()
         except ValueError as exc:
-            self._log(tr("BŁĄD: {message}", message=exc))
+            self._log(tr("ERROR: {message}", message=exc))
             return
         sample_format = self.read_format.currentData()
 
@@ -1296,7 +1289,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return True, *self._read_job(channels, progress, sample_format)
 
         self.after_job = self._decode
-        self._start(job, self._captured, tr("Odczyt pamięci…"))
+        self._start(job, self._captured, tr("Reading memory…"))
 
     def _captured(self, result, keep_old=False):
         triggered, waves, states = result
@@ -1306,43 +1299,41 @@ class MainWindow(QtWidgets.QMainWindow):
         if not waves:
             self._schedule_decode()
         for note in states.get("notes", ()):
-            self._log(tr("Uwaga: {note}", note=note))
+            self._log(tr("Warning: {note}", note=note))
         if not triggered:
-            self._log(tr("Uwaga: brak wyzwolenia w ciągu 1 s, akwizycja wymuszona. Sprawdź ustawienia wyzwalania."))
+            self._log(tr("Warning: no trigger within 1 s, the acquisition was forced. Check the trigger settings."))
         if states["absent"]:
-            self._log(tr("Uwaga: w pamięci oscyloskopu nie ma kanałów: {channels}. Włącz je i wykonaj akwizycję.",
+            self._log(tr("Warning: the scope's memory has no channels {channels}. Turn them on and acquire.",
                          channels=", ".join(states["absent"])))
         for channel, wave in waves.items():
             if is_digital(channel):
                 continue
             state = states[channel]
-            self._log(tr("CH{channel}: {points:,} punktów, {rate:g} MSa/s, {scale:g} V/dz, sonda {probe:g}×, sprzężenie {coupling}",
+            self._log(tr("CH{channel}: {points:,} points, {rate:g} MSa/s, {scale:g} V/div, probe {probe:g}×, coupling {coupling}",
                          channel=channel, points=len(wave.volts), rate=1 / wave.dt / 1e6, scale=state["scale"],
                          probe=state["probe"], coupling=state["coupling"]))
             if wave.clipped > 0.001:
-                self._log(tr("Uwaga: CH{channel} przesterowany ({clipped:.0%} próbek na końcu zakresu). "
-                             "Użyj Autoskali lub sprawdź ustawienie sondy.", channel=channel, clipped=wave.clipped))
+                self._log(tr("Warning: CH{channel} is clipped ({clipped:.0%} of samples at the end of the range). Use Autoscale or check the probe setting.", channel=channel, clipped=wave.clipped))
             if state["coupling"] != "DC":
-                self._log(tr("Uwaga: CH{channel} ma sprzężenie {coupling}, poziomy logiczne będą zniekształcone.",
+                self._log(tr("Warning: CH{channel} has {coupling} coupling, the logic levels will be distorted.",
                              channel=channel, coupling=state["coupling"]))
         digital = [channel for channel in waves if is_digital(channel)]
         if digital:
             wave = waves[digital[0]]
-            self._log(tr("Kanały cyfrowe {channels}: {points:,} punktów, {rate:g} MSa/s",
+            self._log(tr("Digital channels {channels}: {points:,} points, {rate:g} MSa/s",
                          channels=", ".join(channel_name(channel) for channel in digital), points=len(wave.volts),
                          rate=1 / wave.dt / 1e6))
         if states.get("thresholds") and not all(states["thresholds"].values()):
-            self._log(tr("Uwaga: próg kanałów cyfrowych to 0 V, więc logika dodatnia może nie zmieniać stanu. "
-                         "Ustaw go w Ustawieniach oscyloskopu na pasku."))
+            self._log(tr("Warning: the digital channels' threshold is 0 V, so positive logic may not change state. Set it in Scope settings on the toolbar."))
 
     def _autoscale(self):
         try:
             channels = [channel for channel in self._used_channels() if not is_digital(channel)]
         except ValueError as exc:
-            self._log(tr("BŁĄD: {message}", message=exc))
+            self._log(tr("ERROR: {message}", message=exc))
             return
         if not channels:
-            self._log(tr("BŁĄD: {message}", message=tr("Autoskala działa tylko na kanałach analogowych.")))
+            self._log(tr("ERROR: {message}", message=tr("Autoscale works on analog channels only.")))
             return
         trigger_channel = None
         if self.panel.trigger_mode.currentData() == "EDGE":
@@ -1354,32 +1345,32 @@ class MainWindow(QtWidgets.QMainWindow):
         def job(_progress):
             return self.scope.autoscale(channels, trigger_channel, slope, auto_depth)
 
-        self._start(job, self._autoscaled, tr("Autoskala…"))
+        self._start(job, self._autoscaled, tr("Autoscale…"))
 
     def _autoscaled(self, levels):
         for channel, (low, high) in levels.items():
-            self._log(tr("Autoskala CH{channel}: {low:.3f} V … {high:.3f} V", channel=channel, low=low, high=high))
+            self._log(tr("Autoscale CH{channel}: {low:.3f} V … {high:.3f} V", channel=channel, low=low, high=high))
 
     # ---- generator actions ----------------------------------------------
     def _generate(self):
         try:
             generated = self._build_generated()
         except ValueError as exc:
-            self._log(tr("BŁĄD: {message}", message=exc))
+            self._log(tr("ERROR: {message}", message=exc))
             return
 
         def job(progress):
-            progress(tr("Ładowanie wyjść AFG…"))
+            progress(tr("Loading the AFG outputs…"))
             generator.play(self.scope, generated)
             return generated
 
-        self._start(job, self._generate_done, tr("Generowanie {protocol}…", protocol=generated.protocol))
+        self._start(job, self._generate_done, tr("Generating {protocol}…", protocol=generated.protocol))
 
     def _generate_done(self, generated):
         self.generated = generated
         outputs = ", ".join(f"AFG{afg}={generated.labels[key]} {generated.levels[afg][0]:g}…{generated.levels[afg][1]:g} V"
                             for afg, key in sorted(generated.outputs.items()))
-        self._log(tr("Generator {protocol}: {bytes} bajtów, {outputs}, okres rekordu {period:.6g} s",
+        self._log(tr("Generator {protocol}: {bytes} bytes, {outputs}, record period {period:.6g} s",
                      protocol=generated.protocol, bytes=len(generated.data), outputs=outputs, period=generated.period))
         self._verbose(f"{generated.sample_rate:.0f} Sa/s, AFG {generated.afg_frequency:.3f} Hz")
 
@@ -1388,14 +1379,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.scope.afg_enable(1, False)
             self.scope.afg_enable(2, False)
 
-        self._start(job, lambda _result: self._log(tr("Wyjścia AFG wyłączone.")), tr("Wyłączanie AFG…"))
+        self._start(job, lambda _result: self._log(tr("AFG outputs switched off.")), tr("Switching the AFG off…"))
 
     def _match_decoder(self):
         """Set the decoder and timebase for the generator's signal; AFGn is assumed on CHn."""
         try:
             generated = self.generated or self._build_generated()
         except ValueError as exc:
-            self._log(tr("BŁĄD: {message}", message=exc))
+            self._log(tr("ERROR: {message}", message=exc))
             return
         card = next((card for card in ([self.active_card] if self.active_card else []) + self.cards
                      if card.decoder.name == generated.decoder), None) or self.new_decoder(generated.decoder)
@@ -1418,14 +1409,14 @@ class MainWindow(QtWidgets.QMainWindow):
         combo = self.panel.time_scale
         best = min(range(combo.count()), key=lambda index: abs(combo.itemData(index) - scale))
         self.panel.settings["time_scale"].set_value(combo.itemData(best))
-        self._log(tr("Dekoder {decoder}, podstawa czasu {scale}.", decoder=generated.decoder,
+        self._log(tr("Decoder {decoder}, time base {scale}.", decoder=generated.decoder,
                      scale=generator.format_time_scale(scale)))
 
     def _compare(self):
         self.last_compare_ok = False
         if self.expect_sent.isChecked():
             if self.generated is None:
-                self._show_comparison(False, tr("Najpierw wygeneruj sygnał albo podaj oczekiwane dane."))
+                self._show_comparison(False, tr("Generate a signal first or enter the expected data."))
                 return
             expected = self.generated.data
         else:
@@ -1437,16 +1428,16 @@ class MainWindow(QtWidgets.QMainWindow):
         outcome = generator.compare(self.result.annotations, expected)
         self.last_compare_ok = outcome.matched
         if outcome.matched:
-            text = tr("ZGODNE: {count} bajtów, pełnych kopii w zapisie: {copies} (linia {row}).",
+            text = tr("MATCH: {count} bytes, complete copies in the capture: {copies} (line {row}).",
                       count=outcome.expected, copies=outcome.occurrences, row=self._row_label(outcome.row))
         elif not outcome.received:
-            text = tr("NIEZGODNE: brak zdekodowanych danych. Najpierw odbierz sygnał.")
+            text = tr("MISMATCH: nothing decoded. Receive the signal first.")
         else:
-            text = tr("NIEZGODNE: odebrano {received} wartości, zgodny początek {best} z {count} bajtów (linia {row}).",
+            text = tr("MISMATCH: received {received} values, the first {best} of {count} bytes match (line {row}).",
                       received=outcome.received, best=outcome.best_count, count=outcome.expected, row=self._row_label(outcome.row))
             if outcome.want is not None:
-                got = tr("brak") if outcome.got is None else f"0x{outcome.got:02X}"
-                text += " " + tr("Bajt {position}: odebrano {got}, oczekiwano 0x{want:02X}.",
+                got = tr("none") if outcome.got is None else f"0x{outcome.got:02X}"
+                text += " " + tr("Byte {position}: received {got}, expected 0x{want:02X}.",
                                  position=outcome.position, got=got, want=outcome.want)
         self._show_comparison(outcome.matched, text)
 
@@ -1496,17 +1487,17 @@ class MainWindow(QtWidgets.QMainWindow):
         card.problem = ""
         if missing or not mapping:
             names = missing or [tr(spec.label) for spec in card.decoder.signals]
-            card.problem = tr("Przypisz kanały: {signals}.", signals=", ".join(names))
+            card.problem = tr("Assign channels: {signals}.", signals=", ".join(names))
             card.set_status(card.problem, self.theme.warning_text)
             return None
         absent = sorted({channel for channel in mapping.values() if channel not in self.waves})
         if absent:
-            card.set_status(tr("Brak danych dla kanałów: {channels}. Wykonaj akwizycję.",
+            card.set_status(tr("No data for channels: {channels}. Acquire first.",
                                channels=", ".join(channel_name(channel) for channel in absent)), self.theme.warning_text)
             return None
         notes = []
         if len(set(mapping.values())) < len(mapping):
-            notes.append(tr("Kilka sygnałów dekodera na jednym kanale daje wynik bez znaczenia."))
+            notes.append(tr("Several signals of a decoder on one channel give a meaningless result."))
         waves = self._same_length({key: self.waves[channel] for key, channel in mapping.items()})
         thresholds = {key: DIGITAL_LEVELS for key, wave in waves.items() if wave.digital}
         for row in card.signal_rows:
@@ -1517,7 +1508,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if level is not None:
                 thresholds[key] = manual_thresholds(level, waves[key].volts)
         flat = [key for key, wave in waves.items() if (wave.digital or key not in thresholds) and not wave.has_signal()]
-        notes += [tr("Sygnał {key} nie zmienia poziomu.", key=key.upper()) for key in flat]
+        notes += [tr("Signal {key} does not change level.", key=key.upper()) for key in flat]
         card.set_status(" ".join(notes), self.theme.warning_text)
         if len(flat) == len(waves):
             # With no edge on any line nothing was sent, while CAN reads a constant low as endless frames.
@@ -1550,7 +1541,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return outcomes
 
         self.decoding = True
-        self._start(job, self._decoded, tr("Dekodowanie…"), uses_scope=False)
+        self._start(job, self._decoded, tr("Decoding…"), uses_scope=False)
 
     def _decode_captures(self, decoder, waves, thresholds, params, starts):
         """Each capture on its own: a frame cut off by the end of one must not run into the next."""
@@ -1572,8 +1563,7 @@ class MainWindow(QtWidgets.QMainWindow):
         lengths = {len(wave.volts) for wave in waves.values()}
         if len(lengths) == 1:
             return waves
-        self._log(tr("Uwaga: dekoder łączy kanały analogowe i cyfrowe. Na tym oscyloskopie kanały cyfrowe są opóźnione "
-                     "względem analogowych o kilka próbek (zmierzono 8 próbek przy 50 MSa/s), co może zmylić dekoder."))
+        self._log(tr("Warning: the decoder mixes analog and digital channels. On this scope digital channels lag analog ones by several samples (8 samples measured at 50 MSa/s), which can mislead the decoder."))
         finest = min(wave.dt for wave in waves.values())
         stretched = {}
         for key, wave in waves.items():
@@ -1595,7 +1585,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if card not in self.cards:  # removed while the job ran
                 continue
             if error:
-                card.problem = tr("BŁĄD: {message}", message=error)
+                card.problem = tr("ERROR: {message}", message=error)
                 card.set_status(card.problem, self.theme.error_text)
                 card.known_rows = {}
                 continue
@@ -1606,7 +1596,7 @@ class MainWindow(QtWidgets.QMainWindow):
         errors = sum(1 for item in rows if item.error)
         self._fill_row_filter(merged)
         self._apply_row_filter()
-        self._log(tr("Dekodery: {decoders}, {rows} elementów, {errors} z błędem.",
+        self._log(tr("Decoders: {decoders}, {rows} items, {errors} with an error.",
                      decoders=len(self.cards), rows=len(rows), errors=errors))
         self._plot()
         if self.repeat_button.isChecked() and self.scope is not None:
@@ -1632,7 +1622,7 @@ class MainWindow(QtWidgets.QMainWindow):
         present = {item.row for item in result.annotations}
         self.row_filter.blockSignals(True)
         self.row_filter.clear()
-        self.row_filter.addItem(tr("Wszystkie bez bitów"), None)
+        self.row_filter.addItem(tr("All except bits"), None)
         for key, label in result.rows.items():
             if key in present:
                 self.row_filter.addItem(label, key)
@@ -1684,7 +1674,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plots = []
         self.lanes = {}
         self.time_axis_plot = None
-        self.graphics.addLabel(tr("Wybierz kanały w Ustawieniach oscyloskopu na pasku albo dodaj dekoder."), color=self.theme.canvas_text)
+        self.graphics.addLabel(tr("Choose channels in the Scope settings on the toolbar or add a decoder."), color=self.theme.canvas_text)
         self.graphics.ci.setGeometry(self.graphics.range)
 
     def _display_mode_changed(self):
@@ -1841,10 +1831,10 @@ class MainWindow(QtWidgets.QMainWindow):
         """What a row has to say about its data, with the colour to say it in, or None."""
         if channel not in self.waves:
             if self.waves or self.memory_read:
-                return tr("BŁĄD: brak danych. Kanał nie był włączony w czasie akwizycji."), self.theme.error_text
-            return tr("Brak danych. Połącz się z oscyloskopem i kliknij Run albo otwórz zapisane przebiegi (Plik)."), self.theme.warning_text
+                return tr("ERROR: no data. The channel was not on during the acquisition."), self.theme.error_text
+            return tr("No data. Connect to the scope and click Run or open saved waveforms (File)."), self.theme.warning_text
         if channel not in self.scope_settings.thresholds and not self._has_signal(channel):
-            return tr("BŁĄD: brak sygnału. Kanał nie zmienia poziomu."), self.theme.error_text
+            return tr("ERROR: no signal. The channel does not change level."), self.theme.error_text
         return None
 
     def _is_unused(self, channel):
@@ -1854,15 +1844,15 @@ class MainWindow(QtWidgets.QMainWindow):
         """One click, so that a channel ticked again afterwards shows, with what is wrong with it."""
         settings = self.scope_settings
         if not (self.waves or self.memory_read):
-            self._log(tr("Nie ma jeszcze danych, więc nie wiadomo, które kanały są puste. Wykonaj akwizycję."))
+            self._log(tr("There is no data yet, so it is not known which channels are empty. Acquire first."))
             return
         unused = {channel for channel in settings.selected() if self._is_unused(channel)}
         kept = unused & (settings.locked | set(settings.conditions))
         if unused - kept:
-            self._log(tr("Ukryto kanały bez danych: {channels}.", channels=", ".join(map(channel_name, sorted(unused - kept)))))
+            self._log(tr("Hid the channels without data: {channels}.", channels=", ".join(map(channel_name, sorted(unused - kept)))))
         settings.untick(unused - kept)
         if kept:
-            self._log(tr("Uwaga: kanały {channels} nie mają danych, ale są używane przez dekoder albo wyzwalanie.",
+            self._log(tr("Warning: channels {channels} have no data but a decoder or the trigger uses them.",
                          channels=", ".join(map(channel_name, sorted(kept)))))
 
     def _row_note(self, plot, text, color):
@@ -1929,7 +1919,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._analog_row(channel, plot, label, color, wave)
             axis = plot.getAxis("left")
             axis.setCursor(QtCore.Qt.PointingHandCursor)
-            axis.setToolTip(tr("Kliknij: wyzwalanie, próg i skala kanału."))
+            axis.setToolTip(tr("Click: the channel's trigger, threshold and scale."))
             problem = self._channel_problem(channel)
             if problem:
                 self._row_note(plot, *problem)
@@ -1954,7 +1944,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Emptying the layout shrank it, and only a resize of the view would bring its size back.
         self.graphics.ci.setGeometry(self.graphics.range)
         master.showAxis("top")
-        master.setLabel("top", tr("Czas"), units="s")
+        master.setLabel("top", tr("Time"), units="s")
         master.getAxis("top").setStyle(showValues=True)
         self.time_axis_plot = master
         self.master = master
@@ -1982,7 +1972,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """A dashed line on every row where a kept capture ends and the next one begins, named on the top row."""
         pen = pg.mkPen(self.theme.canvas_text, style=QtCore.Qt.DashLine)
         for position, start in enumerate(self.capture_starts):
-            self._vertical_line(start, pen, tr("Akwizycja {number}", number=position + 2), self.theme.canvas_text)
+            self._vertical_line(start, pen, tr("Acquisition {number}", number=position + 2), self.theme.canvas_text)
 
     def _mark_triggers(self):
         pen = pg.mkPen(self.theme.error_text, width=TRIGGER_LINE_WIDTH)  # the one colour no trace has
@@ -2245,9 +2235,9 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---- files ----------------------------------------------------------
     def _export_csv(self):
         if not self.model.rows:
-            self._log(tr("Brak wyników do eksportu."))
+            self._log(tr("No results to export."))
             return
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, tr("Eksport wyników"), "decode.csv", "CSV (*.csv)")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, tr("Export results"), "decode.csv", "CSV (*.csv)")
         if not path:
             return
         self.export_csv_to(path)
@@ -2255,17 +2245,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def export_csv_to(self, path):
         with open(path, "w", newline="", encoding="utf-8-sig") as handle:
             writer = csv.writer(handle, delimiter=";")
-            writer.writerow(["start_s", "end_s", tr("linia"), tr("typ"), tr("dane"), tr("wartość"), tr("błąd")])
+            writer.writerow(["start_s", "end_s", tr("line"), tr("type"), tr("data"), tr("value"), tr("error")])
             for item in self.model.rows:
                 writer.writerow([f"{item.start:.12g}", f"{item.end:.12g}", item.row, item.kind,
                                  item.text, "" if item.value is None else item.value, item.error])
-        self._log(tr("Zapisano {count} wierszy: {path}", count=len(self.model.rows), path=path))
+        self._log(tr("Saved {count} rows: {path}", count=len(self.model.rows), path=path))
 
     def _save_waves(self):
         if not self.waves:
-            self._log(tr("Brak przebiegów do zapisania."))
+            self._log(tr("No waveforms to save."))
             return
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, tr("Zapisz przebiegi"), "waves.npz", "NumPy (*.npz)")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, tr("Save waveforms"), "waves.npz", "NumPy (*.npz)")
         if not path:
             return
         self.save_waves_to(path)
@@ -2278,16 +2268,16 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.trigger_times:
             data[TRIGGER_TIMES_KEY] = np.array(self.trigger_times)
         np.savez_compressed(path, **data)
-        self._log(tr("Zapisano przebiegi: {path}", path=path))
+        self._log(tr("Waveforms saved: {path}", path=path))
 
     def _open_waves(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, tr("Otwórz przebiegi"), "", tr("Przebiegi (*.npz *.bin *.wfm)"))
+            self, tr("Open waveforms"), "", tr("Waveforms (*.npz *.bin *.wfm)"))
         if not path:
             return
         if path.lower().endswith(".wfm"):
             rate, accepted = QtWidgets.QInputDialog.getDouble(
-                self, tr("Otwórz przebiegi"), tr("Plik WFM nie zawiera częstotliwości próbkowania. Podaj ją [MSa/s]:"),
+                self, tr("Open waveforms"), tr("A WFM file has no sample rate. Enter it [MSa/s]:"),
                 100.0, 1e-6, 1e5, 6)
             if accepted:
                 self.open_wfm_from(path, rate * 1e6)
@@ -2305,7 +2295,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 with np.load(path) as data:
                     trigger_times = data[TRIGGER_TIMES_KEY].tolist() if TRIGGER_TIMES_KEY in data.files else ()
         except (OSError, ValueError, KeyError, EOFError) as exc:
-            self._log(tr("BŁĄD odczytu {path}: {error}", path=path, error=exc))
+            self._log(tr("ERROR reading {path}: {error}", path=path, error=exc))
             return
         self._show_opened(path, waves, trigger_times)
 
@@ -2314,7 +2304,7 @@ class MainWindow(QtWidgets.QMainWindow):
             with open(path, "rb") as handle:
                 waves = rigol_files.parse_wfm(handle.read(), 1 / sample_rate).waves
         except (OSError, ValueError) as exc:
-            self._log(tr("BŁĄD odczytu {path}: {error}", path=path, error=exc))
+            self._log(tr("ERROR reading {path}: {error}", path=path, error=exc))
             return
         self._show_opened(path, waves)
 
@@ -2332,11 +2322,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _show_opened(self, path, waves, trigger_times=()):
         if not waves:
-            self._log(tr("BŁĄD: {message}", message=tr("plik nie zawiera przebiegów.")))
+            self._log(tr("ERROR: {message}", message=tr("the file holds no waveforms.")))
             return
         self.scope_settings.choose(waves)
         self._show_new_waves(waves, trigger_times=trigger_times)
-        self._log(tr("Otwarto {path}: kanały {channels}", path=path,
+        self._log(tr("Opened {path}: channels {channels}", path=path,
                      channels=", ".join(channel_name(channel) for channel in sorted(waves))))
         self._decode()
 

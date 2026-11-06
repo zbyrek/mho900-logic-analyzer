@@ -92,7 +92,7 @@ class SigrokDecoder(Decoder):
 
     def decode(self, traces, /, *, srd_stack=(), **options) -> DecodeResult:
         if not traces:
-            raise ValueError(tr("Przypisz kanały do sygnałów dekodera."))
+            raise ValueError(tr("Assign channels to the decoder's signals."))
         abort.checkpoint()
         first = next(iter(traces.values()))
         session = sigrokdecode.Session(first.length, round(1 / first.dt))
@@ -105,7 +105,7 @@ class SigrokDecoder(Decoder):
             try:
                 instance = session.add(info.cls, values, traces if position == 0 else None)
             except Exception as exc:  # a decoder's constructor may raise its own classes
-                raise ValueError(tr("Dekoder {decoder}: {error}", decoder=info.id, error=exc)) from exc
+                raise ValueError(tr("Decoder {decoder}: {error}", decoder=info.id, error=exc)) from exc
             tables[id(instance)] = _row_table(info, prefix)
             prefixes[id(instance)] = prefix
             styles[id(instance)] = _value_style(info, values)
@@ -139,8 +139,8 @@ class SigrokDecoder(Decoder):
         session.run()
         result.annotations.sort(key=lambda item: item.start)
         for pd_id, exc in session.exceptions:
-            result.notes.append(tr("Dekoder {decoder} przerwał pracę: {error}: {detail}",
+            result.notes.append(tr("Decoder {decoder} stopped: {error}: {detail}",
                                    decoder=pd_id, error=type(exc).__name__, detail=exc))
         for problem in sorted(set(session.problems)):
-            result.notes.append(tr("Dekoder zgłosił nieprawidłowe dane: {problem}", problem=problem))
+            result.notes.append(tr("A decoder reported invalid data: {problem}", problem=problem))
         return result

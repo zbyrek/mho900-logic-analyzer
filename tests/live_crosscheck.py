@@ -104,12 +104,12 @@ def main() -> int:
                 firmware = bytes(scope.query_block(":BUS1:DATA?", timeout=15)).decode("ascii", "replace")
             except Exception as exc:  # the report must continue with the next protocol
                 firmware = f"<no event table: {exc}>"
-            print("Oscyloskop:\n" + "\n".join(firmware.splitlines()[:14]))
+            print("Oscilloscope:\n" + "\n".join(firmware.splitlines()[:14]))
             decoder = DECODERS[decoder_name]
             waves = {key: scope.fetch(channel) for key, channel in mapping.items()}
             result = decoder.decode(decoder.prepare(waves, {}), **params)
             items = [a for a in result.annotations if not a.detail]
-            print("Aplikacja:")
+            print("Application:")
             for item in items[:12]:
                 print(f"  {item.start * 1e6:10.2f} us  {item.kind:6s} {item.text} {item.error}")
             crc_fields = [a.text for a in result.annotations if a.kind == "CRC"]

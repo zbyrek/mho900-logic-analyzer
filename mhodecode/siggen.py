@@ -71,7 +71,7 @@ def _finish(lines: dict[str, list[int]], bit_rate: float, samples_per_bit: int, 
     arrays = {}
     for key, levels in lines.items():
         if len(levels) > length:
-            raise ValueError(tr("Sygnał ma {samples} próbek, a rekord AFG mieści {limit}. Skróć dane.",
+            raise ValueError(tr("The signal has {samples} samples and the AFG record holds {limit}. Shorten the data.",
                                 samples=len(levels), limit=length))
         arrays[key] = np.concatenate((
             np.asarray(levels, dtype=np.int8),
@@ -102,7 +102,7 @@ def i2c(transactions: list[tuple[int, bool, bytes]], clock: float, samples_per_b
         length: int = ARB_POINTS) -> TestSignal:
     """transactions: (7-bit address, read, payload). Every byte is ACKed except the last read."""
     if samples_per_bit % 4:
-        raise ValueError("I2C: samples_per_bit musi być wielokrotnością 4")
+        raise ValueError("I2C: samples_per_bit must be a multiple of 4")
     quarter = samples_per_bit // 4
     scl: list[int] = []
     sda: list[int] = []
@@ -280,7 +280,7 @@ def can_fd_frame_bits(identifier: int, data: bytes, extended: bool = False, brs:
     point), "d" data rate, "c" the CRC delimiter (switches back at its sample point).
     """
     if len(data) not in FD_DLC_LENGTHS:
-        raise ValueError(tr("Ramka CAN FD musi mieć jedną z długości: {lengths} bajtów.",
+        raise ValueError(tr("A CAN FD frame must have one of these lengths: {lengths} bytes.",
                             lengths=", ".join(str(item) for item in FD_DLC_LENGTHS)))
     bits = [0]
     if extended:
@@ -333,7 +333,7 @@ def can_fd(frames: list[tuple[int, bytes, bool]], bitrate: float, data_bitrate: 
     sample_rate = data_rate * samples_per_data_bit
     nominal = sample_rate / bitrate
     if nominal < 1:
-        raise ValueError(tr("Prędkość danych CAN FD nie może być mniejsza od prędkości nominalnej."))
+        raise ValueError(tr("The CAN FD data rate cannot be below the nominal rate."))
     nominal_samples = round(nominal)
     widths = {
         "n": nominal_samples,

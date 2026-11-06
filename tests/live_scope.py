@@ -72,7 +72,7 @@ def case_formats_agree(scope):
     step = state["scale"] * 10 / 256  # the screen holds 10 divisions of 8-bit codes at most
     difference = float(np.max(np.abs(byte_wave.volts - word_wave.volts)))
     return difference <= 2 * step and len(byte_wave.volts) == len(word_wave.volts), byte_wave.dt, NoSignal, \
-        f"max różnica {difference * 1000:.1f} mV, krok {step * 1000:.1f} mV"
+        f"max difference {difference * 1000:.1f} mV, step {step * 1000:.1f} mV"
 
 
 def case_deep_read(scope, depth):
@@ -86,7 +86,7 @@ def case_deep_read(scope, depth):
     started = time.monotonic()
     wave = scope.fetch(1)
     elapsed = time.monotonic() - started
-    return len(wave.volts) == depth, wave.dt, NoSignal, f"{len(wave.volts):,} punktów w {elapsed:.1f} s"
+    return len(wave.volts) == depth, wave.dt, NoSignal, f"{len(wave.volts):,} points in {elapsed:.1f} s"
 
 
 def case_abort_read(scope):
@@ -114,7 +114,7 @@ def case_abort_read(scope):
     scope.single(timeout=30)
     wave = scope.fetch(1)
     ok = aborted and len(wave.volts) == 1_000_000 and stopped_after < 2.5
-    return ok, wave.dt, NoSignal, f"zatrzymanie po {stopped_after:.2f} s, powrót {recovered_after:.2f} s"
+    return ok, wave.dt, NoSignal, f"stopped after {stopped_after:.2f} s, recovered {recovered_after:.2f} s"
 
 
 def case_abort_waiting_for_trigger(scope):
@@ -143,7 +143,7 @@ def case_screenshot(scope):
     started = time.monotonic()
     picture = scope.screenshot()
     elapsed = time.monotonic() - started
-    return picture[:8] == b"\x89PNG\r\n\x1a\n", 1e-8, NoSignal, f"{len(picture):,} B w {elapsed:.2f} s"
+    return picture[:8] == b"\x89PNG\r\n\x1a\n", 1e-8, NoSignal, f"{len(picture):,} B in {elapsed:.2f} s"
 
 
 def case_generator_outputs(scope):
@@ -171,7 +171,7 @@ def case_generator_outputs(scope):
     result = decoder.decode(decoder.prepare({"tx": wave}, {}), **generated.decoder_params)
     ok = (generator.compare(result.annotations, TEXT).matched and abs(low - 0.5) < 0.15 and abs(high - 2.5) < 0.15
           and swing_silent < 0.2)
-    return ok, wave.dt, NoSignal, f"CH2 {low:.2f}…{high:.2f} V, CH1 zakres {swing_silent:.3f} V"
+    return ok, wave.dt, NoSignal, f"CH2 {low:.2f}…{high:.2f} V, CH1 range {swing_silent:.3f} V"
 
 
 def case_generator_no_overvoltage(scope):
@@ -210,7 +210,7 @@ def case_generator_no_overvoltage(scope):
     scope.write(":TRIGger:SWEep AUTO")
     scope.stop()
     return status != "STOP" and control == "STOP", 1e-8, NoSignal, \
-        f"wyzwalanie na 2,5 V: przy 1,8 V {status}, kontrola przy 3,3 V {control}"
+        f"trigger at 2.5 V: at 1.8 V {status}, control at 3.3 V {control}"
 
 
 CASES = [
@@ -239,14 +239,14 @@ def main() -> int:
             ok, dt, signal, info = function(scope, *args)
             failed += not ok
             per_bit = 1 / (signal.bit_rate * dt)
-            print(f"{'PASS' if ok else 'FAIL'}  {name:32s} {per_bit:9.1f} próbek/bit  AFG {signal.afg_frequency:9.1f} Hz  {info}", flush=True)
+            print(f"{'PASS' if ok else 'FAIL'}  {name:32s} {per_bit:9.1f} samples/bit  AFG {signal.afg_frequency:9.1f} Hz  {info}", flush=True)
     finally:
         abort.clear()
         scope.afg_enable(1, False)
         scope.afg_enable(2, False)
         scope.run()
         scope.close()
-    print(f"Niepowodzenia: {failed}")
+    print(f"Failures: {failed}")
     return 1 if failed else 0
 
 

@@ -2,7 +2,7 @@
 rem Starts the program from its virtual environment, wherever this file is called from.
 cd /d "%~dp0"
 if not exist ".venv\Scripts\activate.bat" (
-    echo Brak .venv w %CD%. Utworz je poleceniami:
+    echo No .venv in %CD%. Create it with:
     echo   py -m venv .venv
     echo   .venv\Scripts\python.exe -m pip install -r requirements.txt
     pause

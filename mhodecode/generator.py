@@ -34,38 +34,38 @@ LOGIC_LEVELS = (0.0, 3.3)
 CAN_HIGH_LEVELS = (2.5, 3.5)
 CAN_LOW_LEVELS = (1.5, 2.5)
 
-_ID_PARAM = ParamSpec("identifier", "Identyfikator (hex)", 0x123, maximum=0x1FFFFFFF, display_hex=True)
-_EXTENDED_PARAM = ParamSpec("extended", "Format identyfikatora", False,
-                            choices=((False, "Standardowy (11 bitów)"), (True, "Rozszerzony (29 bitów)")))
-_DIFFERENTIAL_PARAM = ParamSpec("differential", "Sygnał", False,
-                                choices=((False, "Jedna linia (dominujący niski)"), (True, "Para CAN_H i CAN_L")))
+_ID_PARAM = ParamSpec("identifier", "Identifier (hex)", 0x123, maximum=0x1FFFFFFF, display_hex=True)
+_EXTENDED_PARAM = ParamSpec("extended", "Identifier format", False,
+                            choices=((False, "Standard (11 bits)"), (True, "Extended (29 bits)")))
+_DIFFERENTIAL_PARAM = ParamSpec("differential", "Signal", False,
+                                choices=((False, "One line (dominant low)"), (True, "CAN_H and CAN_L pair")))
 PROTOCOL_PARAMS: dict[str, tuple[ParamSpec, ...]] = {
     "UART": (
-        ParamSpec("rate", "Prędkość [bit/s]", 115200, minimum=100, maximum=2e7),
-        ParamSpec("data_bits", "Bity danych", 8, choices=((5, "5"), (6, "6"), (7, "7"), (8, "8"))),
-        ParamSpec("parity", "Parzystość", "none",
-                  choices=(("none", "Brak"), ("even", "Parzysta"), ("odd", "Nieparzysta"))),
-        ParamSpec("stop_bits", "Bity stopu", 1.0, choices=((1.0, "1"), (1.5, "1.5"), (2.0, "2"))),
+        ParamSpec("rate", "Bit rate [bit/s]", 115200, minimum=100, maximum=2e7),
+        ParamSpec("data_bits", "Data bits", 8, choices=((5, "5"), (6, "6"), (7, "7"), (8, "8"))),
+        ParamSpec("parity", "Parity", "none",
+                  choices=(("none", "None"), ("even", "Even"), ("odd", "Odd"))),
+        ParamSpec("stop_bits", "Stop bits", 1.0, choices=((1.0, "1"), (1.5, "1.5"), (2.0, "2"))),
     ),
     "I2C": (
-        ParamSpec("rate", "Zegar SCL [Hz]", 400000, minimum=100, maximum=2e7),
-        ParamSpec("address", "Adres 7-bit (hex)", 0x50, maximum=0x7F, display_hex=True),
-        ParamSpec("read", "Kierunek", False, choices=((False, "Zapis"), (True, "Odczyt"))),
+        ParamSpec("rate", "SCL clock [Hz]", 400000, minimum=100, maximum=2e7),
+        ParamSpec("address", "7-bit address (hex)", 0x50, maximum=0x7F, display_hex=True),
+        ParamSpec("read", "Direction", False, choices=((False, "Write"), (True, "Read"))),
     ),
     "SPI": (
-        ParamSpec("rate", "Zegar CLK [Hz]", 1000000, minimum=100, maximum=2e7),
-        ParamSpec("mode", "Tryb (CPOL/CPHA)", 0, choices=(
+        ParamSpec("rate", "CLK clock [Hz]", 1000000, minimum=100, maximum=2e7),
+        ParamSpec("mode", "Mode (CPOL/CPHA)", 0, choices=(
             (0, "0 (CPOL=0, CPHA=0)"), (1, "1 (CPOL=0, CPHA=1)"),
             (2, "2 (CPOL=1, CPHA=0)"), (3, "3 (CPOL=1, CPHA=1)"))),
     ),
     "CAN": (
-        ParamSpec("rate", "Prędkość [bit/s]", 500000, minimum=100, maximum=2e7),
+        ParamSpec("rate", "Bit rate [bit/s]", 500000, minimum=100, maximum=2e7),
         _ID_PARAM, _EXTENDED_PARAM, _DIFFERENTIAL_PARAM,
     ),
     "CAN FD": (
-        ParamSpec("rate", "Prędkość nominalna [bit/s]", 500000, minimum=100, maximum=2e7),
-        ParamSpec("data_rate", "Prędkość danych [bit/s]", 2000000, minimum=100, maximum=2e7),
-        ParamSpec("brs", "Przełączanie prędkości (BRS)", True, choices=((True, "Tak"), (False, "Nie"))),
+        ParamSpec("rate", "Nominal rate [bit/s]", 500000, minimum=100, maximum=2e7),
+        ParamSpec("data_rate", "Data rate [bit/s]", 2000000, minimum=100, maximum=2e7),
+        ParamSpec("brs", "Bit rate switch (BRS)", True, choices=((True, "Yes"), (False, "No"))),
         _ID_PARAM, _EXTENDED_PARAM, _DIFFERENTIAL_PARAM,
     ),
 }
@@ -100,7 +100,7 @@ def parse_data(text: str, data_format: str) -> bytes:
         try:
             data = bytes.fromhex(cleaned)
         except ValueError:
-            raise ValueError(tr("Nieprawidłowe dane hex: {text}", text=text)) from None
+            raise ValueError(tr("Invalid hex data: {text}", text=text)) from None
     else:
         def replace(match):
             code = match.group(1)
@@ -108,7 +108,7 @@ def parse_data(text: str, data_format: str) -> bytes:
                 return chr(int(code[1:], 16))
             if code in SIMPLE_ESCAPES:
                 return SIMPLE_ESCAPES[code]
-            raise ValueError(tr("Nieznana sekwencja \\{code} w danych ASCII.", code=code))
+            raise ValueError(tr("Unknown sequence \\{code} in the ASCII data.", code=code))
 
         if len(text) >= 2 and text[0] == text[-1] == '"':
             text = text[1:-1]
@@ -116,11 +116,11 @@ def parse_data(text: str, data_format: str) -> bytes:
         try:
             data = converted.encode("latin-1")
         except UnicodeEncodeError:
-            raise ValueError(tr("Dane ASCII zawierają znak spoza zakresu: {text}", text=text)) from None
+            raise ValueError(tr("The ASCII data contain a character out of range: {text}", text=text)) from None
         if any(ord(char) > 127 for char in text):
-            raise ValueError(tr("Dane ASCII zawierają znak spoza zakresu: {text}", text=text))
+            raise ValueError(tr("The ASCII data contain a character out of range: {text}", text=text))
     if not data:
-        raise ValueError(tr("Podaj dane do wysłania."))
+        raise ValueError(tr("Enter the data to send."))
     return data
 
 
@@ -185,7 +185,7 @@ def _fitting(build, choices, rate):
     failure = None
     for samples in choices:
         if rate * samples > MAX_SAMPLE_RATE:
-            failure = ValueError(tr("Prędkość {rate:.0f} bit/s przekracza możliwości generatora.", rate=rate))
+            failure = ValueError(tr("{rate:.0f} bit/s is beyond the generator's limit.", rate=rate))
             continue
         try:
             return build(samples)
@@ -210,7 +210,7 @@ def build(protocol: str, data: bytes, params: dict) -> Generated:
         signals = {"tx": "tx"}
         mask = (1 << params["data_bits"]) - 1
         if any(byte > mask for byte in data):
-            raise ValueError(tr("Dane nie mieszczą się w {bits} bitach na znak.", bits=params["data_bits"]))
+            raise ValueError(tr("The data do not fit in {bits} bits per character.", bits=params["data_bits"]))
     elif protocol == "I2C":
         signal = _fitting(lambda samples: siggen.i2c([(params["address"], params["read"], data)], rate, samples),
                           SAMPLES_PER_BIT_CHOICES, rate)
@@ -233,10 +233,10 @@ def build(protocol: str, data: bytes, params: dict) -> Generated:
         brs = params["brs"]
         data_rate = params["data_rate"] if brs else rate
         if data_rate < rate:
-            raise ValueError(tr("Prędkość danych CAN FD nie może być mniejsza od prędkości nominalnej."))
+            raise ValueError(tr("The CAN FD data rate cannot be below the nominal rate."))
         frames = _frames(data, FD_CAN_FRAME_BYTES, params["identifier"], params["extended"])
         if len(frames[-1][1]) not in siggen.FD_DLC_LENGTHS:
-            raise ValueError(tr("Ramka CAN FD musi mieć jedną z długości: {lengths} bajtów.",
+            raise ValueError(tr("A CAN FD frame must have one of these lengths: {lengths} bytes.",
                                 lengths=", ".join(str(item) for item in siggen.FD_DLC_LENGTHS)))
         signal = _fitting(lambda samples: siggen.can_fd(frames, rate, data_rate, samples, brs),
                           FD_SAMPLES_PER_DATA_BIT_CHOICES, data_rate)
@@ -245,7 +245,7 @@ def build(protocol: str, data: bytes, params: dict) -> Generated:
         decoder_params = {"nominal_bitrate": rate, "fast_bitrate": data_rate}
         signals = _can_signals(params)
     else:
-        raise ValueError(tr("Generator nie obsługuje protokołu {protocol}", protocol=protocol))
+        raise ValueError(tr("The generator does not support {protocol}", protocol=protocol))
     length = len(next(iter(lines.values())))
     return Generated(protocol, data, lines, dict(lines_of(protocol, params)), signal.sample_rate,
                      signal.afg_frequency, length / signal.sample_rate, decoder, decoder_params, signals)
@@ -270,14 +270,14 @@ def assign(generated: Generated, outputs: dict[str, int | None], levels: dict[in
         if afg is None:
             continue
         if afg in used:
-            raise ValueError(tr("Wyjście AFG{afg} przypisano do dwóch linii.", afg=afg))
+            raise ValueError(tr("Output AFG{afg} is assigned to two lines.", afg=afg))
         used[afg] = key
     if not used:
-        raise ValueError(tr("Przypisz co najmniej jedną linię do wyjścia AFG."))
+        raise ValueError(tr("Assign at least one line to an AFG output."))
     for afg in used:
         low, high = levels[afg]
         if low >= high:
-            raise ValueError(tr("AFG{afg}: poziom niski musi być mniejszy od wysokiego.", afg=afg))
+            raise ValueError(tr("AFG{afg}: the low level must be below the high level.", afg=afg))
     generated.outputs = used
     generated.levels = {afg: levels[afg] for afg in used}
     generated.impedance = impedance
@@ -298,7 +298,7 @@ def play(scope: Scope, generated: Generated) -> None:
     if problems:
         for afg in OUTPUTS:
             scope.afg_enable(afg, False)
-        raise ValueError(tr("Generator odrzucił ustawienia, wyjścia wyłączone: {errors}", errors="; ".join(problems)))
+        raise ValueError(tr("The generator rejected the settings, outputs switched off: {errors}", errors="; ".join(problems)))
 
 
 @dataclass

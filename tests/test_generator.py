@@ -8,11 +8,11 @@ import pytest
 from mhodecode import abort, generator, i18n
 from mhodecode.decoders import DECODERS
 from mhodecode.decoders.base import Annotation
-from mhodecode.i18n_en import ENGLISH
+from mhodecode.i18n_pl import POLISH
 from mhodecode.signal import from_levels
 
 SOURCE = Path(__file__).resolve().parents[1] / "mhodecode"
-LOWERCASE = re.compile(r"[a-ząćęłńóśźż]")
+LOWERCASE = re.compile(r"[a-z]")
 
 
 # ---- data field --------------------------------------------------------------
@@ -241,9 +241,6 @@ def bound_texts():
     found |= set(re.findall(r'owner\._bind\(.*, "([^"]+)"\)', panel))
     found |= set(re.findall(r'self\._busy_button\("([^"]+)"', source))
     found |= set(re.findall(r'\("([^"]+)", "(?:NEGative|POSitive)"\)', source))
-    # the two-part note on the generator page
-    found.add("Wyjście powtarza rekord w pętli, dopóki jest włączone. Przed podłączeniem urządzenia sprawdź poziomy napięć.")
-    found.discard("Wyjście powtarza rekord w pętli, dopóki jest włączone. ")
     return found
 
 
@@ -261,30 +258,30 @@ def test_data_is_shown_with_its_format_marked():
     assert generator.format_data(b"He\r", "ascii") == '"He\\r"'
 
 
-def test_every_visible_text_has_an_english_entry():
+def test_every_visible_text_has_a_polish_entry():
     texts = translated_literals() | spec_texts() | gui_constants() | bound_texts()
-    missing = sorted(text for text in texts if needs_translation(text) and text not in ENGLISH)
+    missing = sorted(text for text in texts if needs_translation(text) and text not in POLISH)
     assert not missing, missing
 
 
-def test_english_placeholders_match_polish():
-    for source, target in ENGLISH.items():
+def test_polish_placeholders_match_english():
+    for source, target in POLISH.items():
         assert set(re.findall(r"\{(\w+)", source)) == set(re.findall(r"\{(\w+)", target)), source
 
 
-def test_english_has_no_polish_letters():
-    bad = [target for target in ENGLISH.values() if re.search("[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", target)]
+def test_english_sources_have_no_polish_letters():
+    bad = [source for source in POLISH if re.search("[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", source)]
     assert not bad, bad
 
 
 def test_language_switch():
     try:
-        i18n.set_language("en")
-        assert i18n.tr("Połącz") == "Connect"
-        assert i18n.tr("BŁĄD: {message}", message="x") == "ERROR: x"
+        assert i18n.language() == "en"
+        assert i18n.tr("Connect") == "Connect"
         i18n.set_language("pl")
-        assert i18n.tr("Połącz") == "Połącz"
+        assert i18n.tr("Connect") == "Połącz"
+        assert i18n.tr("ERROR: {message}", message="x") == "BŁĄD: x"
         i18n.set_language("xx")
-        assert i18n.language() == "pl"
+        assert i18n.language() == "en"
     finally:
-        i18n.set_language("pl")
+        i18n.set_language("en")

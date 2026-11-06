@@ -30,14 +30,14 @@ RATE_MAXIMUM = 2_000_000_000
 CUSTOM_RATE = None  # the list's entry for a rate typed by hand
 # Upstream tags, grouped so that the long list reads like the menus of an analyzer.
 DECODER_GROUPS = (
-    ("Magistrale i interfejsy", (("Embedded/industrial", "Wbudowane i przemysłowe"), ("PC", "Komputery PC"),
-                                 ("Networking", "Sieci"), ("Automotive", "Motoryzacja"))),
-    ("Układy scalone", (("IC", "Układy scalone"), ("Memory", "Pamięci"), ("Sensor", "Czujniki"), ("Display", "Wyświetlacze"),
-                        ("Analog/digital", "Przetworniki"), ("Clock/timing", "Zegary i czas"))),
-    ("Radio i podczerwień", (("Wireless/RF", "Radio"), ("RFID", "RFID"), ("IR", "Podczerwień"), ("Remote Control", "Piloty"))),
-    ("Narzędzia", (("Debug/trace", "Debugowanie"), ("Util", "Pomocnicze"), ("Encoding", "Kodowania"),
-                   ("Security/crypto", "Bezpieczeństwo"))),
-    ("Pozostałe", (("Audio", "Audio"), ("Lighting", "Oświetlenie"), ("Retro computing", "Retro"))),
+    ("Buses and interfaces", (("Embedded/industrial", "Embedded and industrial"), ("PC", "PC"),
+                                 ("Networking", "Networking"), ("Automotive", "Automotive"))),
+    ("Integrated circuits", (("IC", "Integrated circuits"), ("Memory", "Memory"), ("Sensor", "Sensors"), ("Display", "Displays"),
+                        ("Analog/digital", "Converters"), ("Clock/timing", "Clocks and timing"))),
+    ("Radio and infrared", (("Wireless/RF", "Radio"), ("RFID", "RFID"), ("IR", "Infrared"), ("Remote Control", "Remote controls"))),
+    ("Tools", (("Debug/trace", "Debugging"), ("Util", "Utilities"), ("Encoding", "Encodings"),
+                   ("Security/crypto", "Security"))),
+    ("Other", (("Audio", "Audio"), ("Lighting", "Lighting"), ("Retro computing", "Retro"))),
 )
 
 
@@ -67,7 +67,7 @@ class RateBox(QtWidgets.QWidget):
         self.list.setMaxVisibleItems(len(rates) + 1)
         for rate in rates:
             self.list.addItem(format_rate(rate), rate)
-        self.list.addItem(tr("Własna…"), CUSTOM_RATE)
+        self.list.addItem(tr("Custom…"), CUSTOM_RATE)
         self.custom = QtWidgets.QSpinBox()
         self.custom.setRange(RATE_MINIMUM, RATE_MAXIMUM)
         self.custom.setSuffix(" bit/s")
@@ -201,8 +201,8 @@ class SignalRow:
         self.channel.setMaxVisibleItems(21)
         if default_channel:
             self.channel.setCurrentIndex(self.channel.findData(default_channel))
-        self.auto = QtWidgets.QCheckBox(tr("próg auto"))
-        self.auto.setToolTip(tr("Program sam dobiera próg logiczny z przebiegu. Po odznaczeniu wpisujesz go ręcznie."))
+        self.auto = QtWidgets.QCheckBox(tr("auto threshold"))
+        self.auto.setToolTip(tr("The program picks the logic threshold from the waveform. When unchecked, you type it in."))
         self.auto.setChecked(True)
         self.level = QtWidgets.QDoubleSpinBox()
         self.level.setRange(-500, 500)
@@ -272,7 +272,7 @@ class DecoderTree(QtWidgets.QTreeWidget):
     def rebuild(self, stack_top):
         """The list of what fits the active decoder comes first and changes with it."""
         self.clear()
-        self.fits_group = self._group_item(self, tr("Pasuje do stosu"))
+        self.fits_group = self._group_item(self, tr("Fits the stack"))
         self.show_fitting(stack_top)
         if self.sort_mode == SORT_PARENT:
             self._fill_by_parent()
@@ -303,14 +303,14 @@ class DecoderTree(QtWidgets.QTreeWidget):
                         self._decoder_item(subgroup, info.id, info.name, f"{info.longname}. {info.desc}")
         untagged = sorted((info for info in SIGROK.values() if not info.tags), key=lambda info: info.name.lower())
         if untagged:
-            group = self._group_item(self, tr("Bez kategorii"))
+            group = self._group_item(self, tr("No category"))
             for info in untagged:
                 self._decoder_item(group, info.id, info.name, f"{info.longname}. {info.desc}")
 
     def show_fitting(self, stack_top):
         for child in self.fits_group.takeChildren():
             del child
-        self.fits_group.setText(0, tr("Pasuje do stosu"))
+        self.fits_group.setText(0, tr("Fits the stack"))
         if stack_top is not None:
             self.fits_group.setText(0, f"{tr('Pasuje do stosu')}: {SIGROK[stack_top].name}")
             for info in stackable_on(stack_top, SIGROK):
@@ -416,13 +416,13 @@ class DecoderCard(DecoderDropTarget, QtWidgets.QFrame):
     def _build(self, default_channels):
         self.name_label = QtWidgets.QLabel(f"<b>{self.caption}</b>")
         self.name_label.setToolTip(f"{self.decoder.info.longname}:\n{self.decoder.info.desc}")
-        self.shown = QtWidgets.QCheckBox(tr("Widoczny"))
-        self.shown.setToolTip(tr("Pokaż lub ukryj wiersze tego dekodera"))
+        self.shown = QtWidgets.QCheckBox(tr("Shown"))
+        self.shown.setToolTip(tr("Show or hide this decoder's rows"))
         self.shown.setChecked(True)
         self.shown.toggled.connect(lambda _checked: self.visibility_changed.emit())
-        self.delete_button = QtWidgets.QPushButton(tr("Usuń dekoder"))
+        self.delete_button = QtWidgets.QPushButton(tr("Delete decoder"))
         self.delete_button.setObjectName("danger")
-        self.delete_button.setToolTip(tr("Usuń ten dekoder"))
+        self.delete_button.setToolTip(tr("Delete this decoder"))
         self.delete_button.clicked.connect(lambda: self.remove_requested.emit(self))
         self.header.addWidget(self.name_label)
         self.header.addStretch(1)
@@ -457,8 +457,8 @@ class DecoderCard(DecoderDropTarget, QtWidgets.QFrame):
         self.body_layout.addLayout(self.stack_holder)
         footer = QtWidgets.QHBoxLayout()
         self.rows_button = QtWidgets.QToolButton()
-        self.rows_button.setText(tr("Wiersze"))
-        self.rows_button.setToolTip(tr("Wybiera, które wiersze tego dekodera są widoczne"))
+        self.rows_button.setText(tr("Rows"))
+        self.rows_button.setToolTip(tr("Chooses which rows of this decoder are visible"))
         self.rows_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         self.rows_menu = QtWidgets.QMenu(self)
         self.rows_menu.aboutToShow.connect(self._fill_rows_menu)
@@ -466,8 +466,8 @@ class DecoderCard(DecoderDropTarget, QtWidgets.QFrame):
         footer.addWidget(self.rows_button)
         footer.addStretch(1)
         self.stack_button = QtWidgets.QToolButton()
-        self.stack_button.setText(tr("Dodaj na stos"))
-        self.stack_button.setToolTip(tr("Dołóż na ten dekoder dekoder wyższego poziomu"))
+        self.stack_button.setText(tr("Stack a decoder"))
+        self.stack_button.setToolTip(tr("Stack a higher-level decoder on top of this one"))
         self.stack_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         self.stack_menu = QtWidgets.QMenu(self)
         self.stack_menu.aboutToShow.connect(self._fill_stack_menu)
@@ -535,8 +535,8 @@ class DecoderCard(DecoderDropTarget, QtWidgets.QFrame):
             widgets[param.key] = widget
             notify_on_change(widget, self._edited)
             add_option_row(form, param.label, widget)
-        remove = QtWidgets.QPushButton(tr("Usuń ze stosu (też dekodery powyżej)"))
-        remove.setToolTip(tr("Dekodery powyżej biorą dane z tego, więc znikają razem z nim."))
+        remove = QtWidgets.QPushButton(tr("Remove from the stack (with the decoders above)"))
+        remove.setToolTip(tr("The decoders above take their data from this one, so they go with it."))
         position = len(self.stack_entries)
         remove.clicked.connect(lambda: self.pop(position))
         form.addRow(remove)
@@ -612,7 +612,7 @@ class DecoderWindow(QtWidgets.QWidget):
         self.retranslate()
 
     def retranslate(self):
-        self.note.setText(f"<i>{tr('* Wymagane kanały')}</i>")
+        self.note.setText(f"<i>{tr('* Required channels')}</i>")
 
     def open(self):
         if not self.isVisible():

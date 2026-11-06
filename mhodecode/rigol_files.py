@@ -64,12 +64,12 @@ def parse_bin(data, wanted_digital=()) -> MemoryFile:
     """Analog channels, and of the digital ones those in wanted_digital or with any edge."""
     buffer = memoryview(data)
     if bytes(buffer[:4]) != BIN_MAGIC:
-        raise ValueError(tr("To nie jest plik BIN oscyloskopu."))
+        raise ValueError(tr("This is not a BIN file of the scope."))
     waves, factor = {}, 0
     position = BIN_FILE_HEADER
     while position < len(buffer):
         if position + BIN_WAVE_HEADER.size > len(buffer):
-            raise ValueError(tr("Plik BIN jest ucięty."))
+            raise ValueError(tr("The BIN file is cut short."))
         header_size, kind, _buffers, points, _count, _range, _display, step, origin, *_units = BIN_WAVE_HEADER.unpack_from(buffer, position)
         label = bytes(buffer[position + BIN_LABEL_OFFSET:position + BIN_LABEL_OFFSET + BIN_LABEL_SIZE])
         position += header_size
@@ -77,7 +77,7 @@ def parse_bin(data, wanted_digital=()) -> MemoryFile:
         position += data_header
         size = points * width if kind == BIN_LOGIC else declared
         if position + size > len(buffer):
-            raise ValueError(tr("Plik BIN jest ucięty."))
+            raise ValueError(tr("The BIN file is cut short."))
         if kind == BIN_ANALOG:
             channel = _analog_channel(label)
             if channel is not None:
@@ -105,7 +105,7 @@ def _wfm_data_start(data):
             for channels in ANALOG_CHANNELS:
                 if len(data) - position - WFM_DATA_HEADER == points * 2 * channels:
                     return position, points, channels
-    raise ValueError(tr("Plik WFM ma nieznany układ."))
+    raise ValueError(tr("The WFM file has an unknown layout."))
 
 
 def _wfm_blocks(settings):
@@ -147,11 +147,11 @@ def parse_wfm(data, dt: float) -> MemoryFile:
     Time zero is taken as the middle of the record, where the trigger is without a time offset."""
     data = bytes(data)
     if data[:4] != WFM_MAGIC:
-        raise ValueError(tr("To nie jest plik WFM oscyloskopu."))
+        raise ValueError(tr("This is not a WFM file of the scope."))
     start, points, stored = _wfm_data_start(data)
     channels = {channel: levels for channel, levels in _wfm_channels(_wfm_blocks(data[:start])).items() if channel <= stored}
     if not channels:
-        raise ValueError(tr("Plik WFM ma nieznany układ."))
+        raise ValueError(tr("The WFM file has an unknown layout."))
     samples = np.frombuffer(data, "<u2", points * stored, start + WFM_DATA_HEADER)
     waves = {}
     for channel, (scale, offset) in channels.items():

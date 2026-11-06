@@ -26,9 +26,9 @@ RETRY_AFTER_LOSS_S = 2.0
 HOLD_AFTER_CHANGE_S = 1.2
 DEPTHS = (("Auto", "AUTO"), ("1 k", "1000"), ("10 k", "10000"), ("100 k", "100000"), ("1 M", "1000000"), ("10 M", "10000000"),
           ("25 M", "25000000"), ("50 M", "50000000"), ("100 M", "100000000"))
-ACQUIRE_TYPES = (("Normalny", "NORMal"), ("Szczytowy", "PEAK"), ("Uśredniany", "AVERages"), ("Wysoka rozdzielczość", "HRESolution"))
+ACQUIRE_TYPES = (("Normal", "NORMal"), ("Peak", "PEAK"), ("Average", "AVERages"), ("High resolution", "HRESolution"))
 COUPLINGS = (("DC", "DC"), ("AC", "AC"), ("GND", "GND"))
-BANDWIDTHS = (("Pełne", "OFF"), ("20 MHz", "20M"), ("250 MHz", "250M"))
+BANDWIDTHS = (("Full", "OFF"), ("20 MHz", "20M"), ("250 MHz", "250M"))
 # What the Programming Guide lists as settable, beyond the ones on the list above.
 OTHER_DEPTHS = (125e6, 200e6, 250e6, 500e6)
 AUTO_DEPTH = "AUTO"
@@ -43,7 +43,7 @@ TIME_OFFSET_DEFAULT_STEP = 1e-4
 SI_FACTORS = {"": 1.0, "k": 1e3, "m": 1e-3, "u": 1e-6, "µ": 1e-6, "μ": 1e-6, "n": 1e-9, "p": 1e-12}
 SECONDS_TEXT = re.compile(r"\s*([+-]?(?:\d+[.,]?\d*|[.,]\d+)(?:[eE][+-]?\d+)?)\s*([kmuµμnp]?)s?\s*")
 SECONDS_PARTIAL = re.compile(r"[\s\d.,eE+kmuµμnps-]*")
-STATE_NAMES = {"TD": "Wyzwolono", "WAIT": "Czeka na wyzwolenie", "RUN": "Praca", "AUTO": "Auto", "STOP": "Zatrzymany"}
+STATE_NAMES = {"TD": "Triggered", "WAIT": "Waiting for trigger", "RUN": "Running", "AUTO": "Auto", "STOP": "Stopped"}
 STATE_QUERY = ":TRIGger:STATus?"
 RATE_QUERY = ":ACQuire:SRATe?"
 DEPTH_QUERY = ":ACQuire:MDEPth?"
@@ -483,7 +483,7 @@ class HexSetting(Setting):
         try:
             self.current()
         except ValueError as exc:
-            self.panel.report(tr("BŁĄD: {message}", message=exc))
+            self.panel.report(tr("ERROR: {message}", message=exc))
             return
         super().changed()
 
@@ -504,7 +504,7 @@ class BitsSetting(Setting):
     def __init__(self, panel, read, widget, send, width):
         super().__init__(panel, read, widget, send)
         self.width = width  # the current number of bits, which another field may change
-        widget.setToolTip(tr("0, 1 lub X (dowolny), najstarszy bit pierwszy. Tego pola program nie odczytuje z oscyloskopu."))
+        widget.setToolTip(tr("0, 1 or X (any), from bit 0. This field cannot be read from the scope."))
         widget.editingFinished.connect(self._edited)
 
     def _edited(self):
@@ -516,7 +516,7 @@ class BitsSetting(Setting):
         try:
             trigger.bit_codes(self.widget.text(), self.width())
         except ValueError as exc:
-            self.panel.report(tr("BŁĄD: {message}", message=exc))
+            self.panel.report(tr("ERROR: {message}", message=exc))
             return
         super().changed()
 
@@ -555,8 +555,8 @@ class ScopePanel(QtWidgets.QWidget):
         left_layout = QtWidgets.QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         bar = QtWidgets.QHBoxLayout()
-        for text, command, tip in (("RUN", ":RUN", "Praca ciągła"), ("STOP", ":STOP", "Zatrzymanie"),
-                                   ("SINGLE", ":SINGle", "Jedna akwizycja"), ("FORCE", ":TFORce", "Wymuszenie wyzwolenia")):
+        for text, command, tip in (("RUN", ":RUN", "Run continuously"), ("STOP", ":STOP", "Stop acquiring"),
+                                   ("SINGLE", ":SINGle", "One acquisition"), ("FORCE", ":TFORce", "Force a trigger")):
             button = QtWidgets.QPushButton(text)
             button.setProperty("command", command)
             self.owner._bind(button.setToolTip, tip)
@@ -571,8 +571,8 @@ class ScopePanel(QtWidgets.QWidget):
         bar.addStretch(1)
         self.live_check = QtWidgets.QCheckBox()
         self.live_check.setChecked(True)
-        self.owner._bind(self.live_check.setText, "Podgląd na żywo")
-        self.owner._bind(self.live_check.setToolTip, "Obraz ekranu oscyloskopu na bieżąco; kliknięcia i przeciągnięcia działają na nim jak dotyk. Strona WWW oscyloskopu i program wypychają się nawzajem z tego połączenia.")
+        self.owner._bind(self.live_check.setText, "Live view")
+        self.owner._bind(self.live_check.setToolTip, "The scope's screen as it changes; clicks and drags work on it like touch. The scope's web page and this program push each other off this connection.")
         self.live_check.toggled.connect(self._live_toggled)
         bar.addWidget(self.live_check)
         left_layout.addLayout(bar)
@@ -628,30 +628,30 @@ class ScopePanel(QtWidgets.QWidget):
         return setting.widget
 
     def _horizontal_group(self):
-        group = self._group("Podstawa czasu i pamięć")
+        group = self._group("Time base and memory")
         form = QtWidgets.QFormLayout(group)
         self.time_scale = self._combo()
         self._add("time_scale", ScaleSetting(self, TIME_QUERY, self.time_scale, lambda value: f":TIMebase:MAIN:SCALe {value:g}",
                                              generator.time_scale_choices(), generator.format_time_scale))
-        form.addRow(self.owner._label("Podstawa czasu"), self.time_scale)
+        form.addRow(self.owner._label("Time base"), self.time_scale)
         self.time_offset = SecondsBox(1000.0)
         self.time_offset.setSingleStep(TIME_OFFSET_DEFAULT_STEP)
-        self.owner._bind(self.time_offset.setToolTip, "Można wpisać z przedrostkiem, np. 1,5 ms, 20 µs lub 20 us. Strzałki przesuwają o 0,1 działki.")
+        self.owner._bind(self.time_offset.setToolTip, "Can be typed with a prefix, such as 1.5 ms, 20 µs or 20 us. The arrows move it by 0.1 division.")
         self._add("time_offset", NumberSetting(self, ":TIMebase:MAIN:OFFSet?", self.time_offset, lambda value: f":TIMebase:MAIN:OFFSet {value:.10g}"))
-        form.addRow(self.owner._label("Przesunięcie czasu"), self.time_offset)
+        form.addRow(self.owner._label("Time offset"), self.time_offset)
         self.depth = self._combo(DEPTHS)
         self._add("depth", DepthSetting(self, DEPTH_QUERY, self.depth, lambda value: f":ACQuire:MDEPth {value}"))
-        form.addRow(self.owner._label("Głębokość pamięci"), self.depth)
+        form.addRow(self.owner._label("Memory depth"), self.depth)
         self.acquire_type = self._combo(ACQUIRE_TYPES)
         self._add("acquire_type", ChoiceSetting(self, ":ACQuire:TYPE?", self.acquire_type, lambda value: f":ACQuire:TYPE {value}"))
-        form.addRow(self.owner._label("Tryb akwizycji"), self.acquire_type)
+        form.addRow(self.owner._label("Acquisition mode"), self.acquire_type)
         return group
 
     def _channels_group(self):
-        group = self._group("Kanały analogowe")
+        group = self._group("Analog channels")
         grid = QtWidgets.QGridLayout(group)
         grid.setVerticalSpacing(3)
-        for column, title in enumerate(("", "V/dz", "Przesunięcie", "Sprzężenie", "Pasmo", "Sonda")):
+        for column, title in enumerate(("", "V/div", "Offset", "Coupling", "Bandwidth", "Probe")):
             if title:
                 grid.addWidget(self.owner._label(title), 0, column)
         self.channel_on, self.channel_scale, self.channel_offset = {}, {}, {}
@@ -659,7 +659,7 @@ class ScopePanel(QtWidgets.QWidget):
         for row, channel in enumerate(ANALOG_CHANNELS, start=1):
             head = f":CHANnel{channel}"
             check = QtWidgets.QCheckBox(f"CH{channel}")
-            self.owner._bind(check.setToolTip, "Włącza lub wyłącza kanał na oscyloskopie")
+            self.owner._bind(check.setToolTip, "Turns the channel on or off on the scope")
             self.channel_on[channel] = self._add(f"on{channel}", CheckSetting(
                 self, f"{head}:DISPlay?", check, lambda value, head=head: f"{head}:DISPlay {'ON' if value else 'OFF'}"))
             scale = self._combo()
@@ -683,35 +683,35 @@ class ScopePanel(QtWidgets.QWidget):
         return group
 
     def _digital_group(self):
-        group = self._group("Kanały cyfrowe")
+        group = self._group("Digital channels")
         grid = QtWidgets.QGridLayout(group)
         self.pod_on, self.pod_threshold = {}, {}
         for row, (pod, name) in enumerate(zip(DIGITAL_PODS, ("D0–D7", "D8–D15"))):
             check = QtWidgets.QCheckBox(name)
-            self.owner._bind(check.setToolTip, "Włącza tę grupę kanałów na oscyloskopie.")
+            self.owner._bind(check.setToolTip, "Turns this group of channels on on the scope.")
             self.pod_on[pod] = self._add(f"pod{pod}", PodSetting(self, pod, check))
             level = self._spin(-15.0, 15.0, 3, " V")
             level.setSingleStep(0.1)
             self.pod_threshold[pod] = self._add(f"threshold{pod}", NumberSetting(
                 self, f":LA:POD{pod}:THReshold?", level, lambda value, pod=pod: f":LA:POD{pod}:THReshold {value:.4g}"))
             grid.addWidget(check, row, 0)
-            grid.addWidget(self.owner._label("Próg"), row, 1)
+            grid.addWidget(self.owner._label("Threshold"), row, 1)
             grid.addWidget(level, row, 2)
-        note = self.owner._label("Domyślny próg to 0 V: logika 0–3,3 V wymaga progu około 1,65 V, inaczej kanały nie zmieniają stanu.")
+        note = self.owner._label("The default threshold is 0 V: 0–3.3 V logic needs about 1.65 V, or the channels will not change state.")
         note.setWordWrap(True)
         grid.addWidget(note, len(DIGITAL_PODS), 0, 1, 3)
         return group
 
     def _trigger_group(self):
-        group = self._group("Wyzwalanie")
+        group = self._group("Trigger")
         layout = QtWidgets.QVBoxLayout(group)
         form = QtWidgets.QFormLayout()
         self.trigger_mode = self._combo([(mode.label, mode.name) for mode in trigger.MODES])
         self._add("trigger_mode", ChoiceSetting(self, MODE_QUERY, self.trigger_mode, lambda value: f":TRIGger:MODE {value}"))
-        form.addRow(self.owner._label("Typ"), self.trigger_mode)
+        form.addRow(self.owner._label("Type"), self.trigger_mode)
         self.sweep = self._combo(trigger.SWEEPS)
         self._add("sweep", ChoiceSetting(self, ":TRIGger:SWEep?", self.sweep, lambda value: f":TRIGger:SWEep {value}"))
-        form.addRow(self.owner._label("Tryb"), self.sweep)
+        form.addRow(self.owner._label("Sweep"), self.sweep)
         layout.addLayout(form)
         self.trigger_pages = QtWidgets.QStackedWidget()
         for mode in trigger.MODES:
@@ -802,7 +802,7 @@ class ScopePanel(QtWidgets.QWidget):
         self.link = LiveLink(scope, self)
         self.link.value.connect(self._value_received)
         self.link.refused.connect(self._refused)
-        self.link.lost.connect(lambda text: self.report(tr("BŁĄD: {message}", message=text)))
+        self.link.lost.connect(lambda text: self.report(tr("ERROR: {message}", message=text)))
         self.link.active = self.isVisible()
         self._update_watch()
         self.link.read_all_once()
@@ -860,7 +860,7 @@ class ScopePanel(QtWidgets.QWidget):
             self.screen_view.show_image(image)
 
     def _stream_silent(self, host):
-        self.report(tr("Uwaga: podgląd z {host} nie dostaje obrazu. Ponawiam połączenie.", host=host))
+        self.report(tr("Warning: the live view from {host} gets no picture. Connecting again.", host=host))
 
     def _touched(self, kind, x, y):
         if self.stream is not None:
@@ -874,7 +874,7 @@ class ScopePanel(QtWidgets.QWidget):
         self.message.emit(text)
 
     def _refused(self, command, error):
-        self.report(tr("BŁĄD: {message}", message=tr("oscyloskop odrzucił {command}: {error}", command=command, error=error)))
+        self.report(tr("ERROR: {message}", message=tr("the scope refused {command}: {error}", command=command, error=error)))
 
     def _value_received(self, query, reply):
         if query == STATE_QUERY:

@@ -203,18 +203,18 @@ def run_selftest(window, app, host: str, output: Path) -> None:
         window.panel.settings["trigger_mode"].set_value("EDGE")
         window.center_tabs.setCurrentIndex(0)
 
-    def english():
-        window._set_language("en")
-        outcomes.append(("language switch", window.connect_button.text() == "Disconnect"))
+    def polish():
+        window._set_language("pl")
+        outcomes.append(("language switch", window.connect_button.text() == "Rozłącz"))
 
-    def english_shots():
+    def polish_shots():
         # After the layouts have settled: this runs on a later turn of the event loop.
-        window.grab().save(str(output / "selftest_english.png"))
+        window.grab().save(str(output / "selftest_polish.png"))
         window.sidebar_tabs.setCurrentIndex(1)
 
-    def english_generator_shot():
-        window.grab().save(str(output / "selftest_english_generator.png"))
-        window._set_language("pl")
+    def polish_generator_shot():
+        window.grab().save(str(output / "selftest_polish_generator.png"))
+        window._set_language("en")
 
     def generator_shot():
         window.grab().save(str(output / "selftest_generator.png"))
@@ -388,7 +388,7 @@ def run_selftest(window, app, host: str, output: Path) -> None:
     steps += swapped_output_steps()
     steps += [begin_abort_test, check_abort]
     steps += signal_steps("after abort, UART still on AFG2", "UART", "hex", "A5 5A", rate=115200)
-    steps += [screen_on, check_screen, check_setting_sent, check_front_panel_change, english, english_shots, english_generator_shot, generator_shot, window._afg_off]
+    steps += [screen_on, check_screen, check_setting_sent, check_front_panel_change, polish, polish_shots, polish_generator_shot, generator_shot, window._afg_off]
     total_steps = len(steps)
 
     def finish():

@@ -38,9 +38,9 @@ def window(app, tmp_path):
     QtCore.QSettings.setPath(QtCore.QSettings.IniFormat, QtCore.QSettings.UserScope, str(tmp_path))
     QtCore.QSettings.setDefaultFormat(QtCore.QSettings.IniFormat)
     created = MainWindow()
-    created._set_language("pl")
+    created._set_language("en")
     yield created
-    created._set_language("pl")
+    created._set_language("en")
     created.close()
     created.deleteLater()
     QtWidgets.QApplication.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
@@ -108,13 +108,13 @@ def test_language_switch_keeps_the_forms(window):
     window.gen_line_combos["scl"].setCurrentIndex(window.gen_line_combos["scl"].findData(2))
     window.gen_line_combos["sda"].setCurrentIndex(window.gen_line_combos["sda"].findData(1))
     window.gen_levels[1][1].setValue(1.8)
-    window._set_language("en")
+    window._set_language("pl")
     assert active(window).param_widgets["parity"].currentData() == "odd"
     assert active(window).signal_rows[0].channel.currentData() == 3
     assert window.gen_line_combos["scl"].currentData() == 2
     assert window.gen_line_combos["sda"].currentData() == 1
     assert window.gen_levels[1][1].value() == pytest.approx(1.8)
-    assert window.connect_button.text() == "Connect"
+    assert window.connect_button.text() == "Połącz"
 
 
 def test_time_base_is_a_1_2_5_menu(window):
@@ -164,7 +164,7 @@ def test_match_decoder_follows_the_chosen_output(window):
 def test_compare_without_generation_says_what_to_do(window):
     window._compare()
     assert window.last_compare_ok is False
-    assert window.compare_label.text() == i18n.tr("Najpierw wygeneruj sygnał albo podaj oczekiwane dane.")
+    assert window.compare_label.text() == i18n.tr("Generate a signal first or enter the expected data.")
 
 
 def test_compare_with_own_expected_data(window):
@@ -230,7 +230,7 @@ def test_language_switch_keeps_the_stack(window):
     combo = active(window).stack_entries[0].widgets["chip"]
     chosen = combo.itemData(3)
     combo.setCurrentIndex(3)
-    window._set_language("en")
+    window._set_language("pl")
     assert active(window).param_widgets["address_format"].currentData() == "unshifted"
     assert active(window).stack_entries[0].pd_id == "eeprom24xx"
     assert active(window).stack_entries[0].widgets["chip"].currentData() == chosen
@@ -426,7 +426,7 @@ def test_hiding_a_decoder_or_a_row_takes_it_off_the_view(window):
 
 def test_no_decode_button_any_more(window):
     assert not hasattr(window, "decode_button")
-    assert i18n.tr("Dekoduj ponownie") not in visible_texts(window)
+    assert i18n.tr("Decode again") not in visible_texts(window)
 
 
 def test_language_switch_keeps_all_decoders(window):
@@ -434,7 +434,7 @@ def test_language_switch_keeps_all_decoders(window):
     first.param_widgets["parity"].setCurrentIndex(first.param_widgets["parity"].findData("odd"))
     first.shown.setChecked(False)
     second = window.select_sigrok("eeprom24xx")
-    window._set_language("en")
+    window._set_language("pl")
     assert window.cards == [first, second]
     assert first.params()["parity"] == "odd" and not first.shown.isChecked()
     assert second.chain() == ["i2c", "eeprom24xx"]
@@ -572,8 +572,8 @@ def test_log_lives_in_its_own_window_opened_from_the_menu(window):
     assert window.log_window.isWindow() and not window.log_window.isVisible()
     assert window.log_window.isAncestorOf(window.log) and not window.centralWidget().isAncestorOf(window.log)
     menus = {action.text(): action.menu() for action in window.menuBar().actions()}
-    assert "Log" not in [action.text() for action in menus["Widok"].actions()]
-    entry = next(action for action in menus["Zaawansowane"].actions() if action.text() == "Log")
+    assert "Log" not in [action.text() for action in menus["View"].actions()]
+    entry = next(action for action in menus["Advanced"].actions() if action.text() == "Log")
     entry.trigger()
     assert window.log_window.isVisible()
     window.log_window.close()
@@ -581,17 +581,17 @@ def test_log_lives_in_its_own_window_opened_from_the_menu(window):
 
 
 def test_status_bar_shows_errors_from_the_closed_log(window):
-    window._log(i18n.tr("BŁĄD: {message}", message="x"))
-    assert window.last_message.text() == "BŁĄD: x"
+    window._log(i18n.tr("ERROR: {message}", message="x"))
+    assert window.last_message.text() == "ERROR: x"
     assert THEMES[window.theme_code].error_text in window.last_message.styleSheet()
-    window._log("zwykły")
+    window._log("plain")
     assert window.last_message.styleSheet() == ""
-    assert window.log.toPlainText().splitlines()[-1] == "zwykły"
+    assert window.log.toPlainText().splitlines()[-1] == "plain"
 
 
-def test_english_error_is_marked_as_well(window):
-    window._set_language("en")
-    window._log(i18n.tr("BŁĄD: {message}", message="x"))
+def test_polish_error_is_marked_as_well(window):
+    window._set_language("pl")
+    window._log(i18n.tr("ERROR: {message}", message="x"))
     assert THEMES[window.theme_code].error_text in window.last_message.styleSheet()
 
 
@@ -986,7 +986,7 @@ def test_the_response_check_moved_from_the_generator_to_the_advanced_menu(window
     for button in (window.receive_button, window.compare_button, window.match_button):
         assert button not in generator_buttons
     assert window.gen_button in generator_buttons and window.afg_off_button in generator_buttons
-    advanced = next(action.menu() for action in window.menuBar().actions() if action.text() == "Zaawansowane")
+    advanced = next(action.menu() for action in window.menuBar().actions() if action.text() == "Advanced")
     assert window.test_action in advanced.actions()
     assert window.test_window.isWindow() and not window.test_window.isVisible()
     window.test_action.trigger()
@@ -999,7 +999,7 @@ def test_the_response_check_moved_from_the_generator_to_the_advanced_menu(window
 def test_delete_button_says_what_it_does_in_words(window):
     card = window.new_decoder("UART")
     assert isinstance(card.delete_button, QtWidgets.QPushButton)
-    assert card.delete_button.text() == "Usuń dekoder" and card.delete_button.icon().isNull()
+    assert card.delete_button.text() == "Delete decoder" and card.delete_button.icon().isNull()
     card.delete_button.click()
     assert window.cards == []
 
@@ -1025,12 +1025,13 @@ def test_every_button_says_what_it_does(window):
 
 def test_button_tips_change_with_the_language(window):
     try:
-        window._set_language("en")
         assert window.connect_button.toolTip() == "Connects to the scope at the given IP address, or disconnects."
-        assert window.lane_delete_action.text() == "Delete decoder"
-    finally:
         window._set_language("pl")
-    assert window.lane_delete_action.text() == "Usuń dekoder"
+        assert window.connect_button.toolTip() != "Connects to the scope at the given IP address, or disconnects."
+        assert window.lane_delete_action.text() == "Usuń dekoder"
+    finally:
+        window._set_language("en")
+    assert window.lane_delete_action.text() == "Delete decoder"
 
 
 def test_a_decoder_dropped_on_a_trace_goes_on_its_stack(window):
@@ -1121,9 +1122,9 @@ def test_manual_threshold_is_used_by_the_logic_view(window):
 
 
 def test_menu_has_the_file_actions(window):
-    files = next(action.menu() for action in window.menuBar().actions() if action.text() == "Plik")
+    files = next(action.menu() for action in window.menuBar().actions() if action.text() == "File")
     texts = [action.text() for action in files.actions()]
-    assert {"Otwórz przebiegi", "Zapisz przebiegi", "Eksport wyników CSV", "Zakończ"} <= set(texts)
+    assert {"Open waveforms", "Save waveforms", "Export results to CSV", "Exit"} <= set(texts)
 
 
 # ---- digital channels ---------------------------------------------------------------
@@ -1166,7 +1167,7 @@ def test_mixing_analog_and_digital_warns_and_matches_lengths(window):
     wave = digital_wave(0, [0, 1, 0, 1], 2e-6)
     joined = window._same_length({"a": analog, "b": wave})
     assert len(joined["b"].volts) == 8 and joined["b"].dt == 1e-6 and list(joined["b"].volts[:4]) == [0, 0, 1, 1]
-    assert window.last_message_text.startswith(("Uwaga", "Warning"))
+    assert window.last_message_text.startswith("Warning")
 
 
 def test_saved_waves_keep_digital_channels(window, tmp_path):
@@ -1228,7 +1229,7 @@ def test_reply_updates_the_widget_without_sending(window):
         panel._value_received(":TRIGger:MODE?", "IIC")
         assert panel.trigger_mode.currentData() == "IIC" and panel.trigger_pages.currentIndex() == 2
         panel._value_received(":TRIGger:STATus?", "T'D")
-        assert panel.state_label.text() == i18n.tr("Wyzwolono")
+        assert panel.state_label.text() == i18n.tr("Triggered")
         assert link.sent == []
     finally:
         panel.link = None
@@ -1464,7 +1465,7 @@ def test_opening_a_bad_file_says_so(window, tmp_path):
     path = tmp_path / "x.bin"
     path.write_bytes(b"junk")
     window.open_waves_from(str(path))
-    assert not window.waves and window.last_message_text.startswith(("BŁĄD", "ERROR"))
+    assert not window.waves and window.last_message_text.startswith(("ERROR", "ERROR"))
 
 
 def test_repeated_readings_do_not_restart_the_round(window):
@@ -1557,7 +1558,7 @@ def test_a_decoder_on_an_empty_channel_gets_no_edges_and_says_so(window):
     card = use(window, "UART")
     run_decode(window)
     assert window.result.annotations == []
-    assert "nie zmienia poziomu" in card.problem
+    assert "does not change level" in card.problem
 
 
 class ChannelScope:
@@ -1664,8 +1665,8 @@ def test_all_channels_unticked_leaves_a_word_and_no_crash(window):
     window._plot()
     window.scope_settings.boxes[1].setChecked(False)
     assert window.master is None and window.plots == []
-    window._set_language("en")  # goes through the placeholder too
-    window._set_language("pl")
+    window._set_language("pl")  # goes through the placeholder too
+    window._set_language("en")
     window.scope_settings.boxes[1].setChecked(True)
     assert window.master is not None
 
@@ -1676,14 +1677,14 @@ def test_a_chosen_channel_always_has_its_row_with_what_is_wrong_on_it(window):
     window._show_new_waves({1: square_wave(1), 3: noise_wave(3)})
     assert sorted(window.channel_rows) == [1, 3, 4]
     notes = [note.text() for note in window.row_notes]
-    assert len(notes) == 2 and any("brak sygnału" in note for note in notes) and any("brak danych" in note for note in notes)
+    assert len(notes) == 2 and any("no signal" in note for note in notes) and any("no data" in note.lower() for note in notes)
 
 
 def test_rows_are_there_before_any_capture(window):
     window.scope_settings.choose((1, 2))
     window._plot()
     assert sorted(window.channel_rows) == [1, 2] and window.master is not None
-    assert all(note.text().startswith("Brak danych") for note in window.row_notes)
+    assert all(note.text().startswith("No data") for note in window.row_notes)
 
 
 def test_hide_unused_unticks_what_has_no_data_and_a_tick_brings_it_back(window):
@@ -1712,7 +1713,7 @@ def test_hide_unused_leaves_what_a_decoder_or_the_trigger_uses(window):
 def test_hide_unused_before_any_capture_only_tells(window):
     window.scope_settings.choose((1, 2))
     window.scope_settings.hide_unused.click()
-    assert window.scope_settings.selected() == {1, 2} and "akwizycj" in window.last_message_text.lower()
+    assert window.scope_settings.selected() == {1, 2} and "acqui" in window.last_message_text.lower()
 
 
 def test_conditions_the_scope_cannot_combine_replace_each_other():
@@ -1903,7 +1904,7 @@ def test_aborting_an_acquisition_is_logged_even_with_a_decoding_waiting(window, 
     assert window.decode_pending and not abort.requested()
     window._abort()
     run_job(window, app)
-    assert "Przerwano" in window.log.toPlainText()
+    assert "Aborted" in window.log.toPlainText()
     window.scope = None
 
 
@@ -2150,7 +2151,6 @@ def test_a_row_without_data_has_the_window_too(window):
 
 
 def test_channel_tips_are_translated(window):
-    window._set_language("en")
     picker = window.scope_settings
     assert picker.text() == "Scope settings" and "Applied by Acquisition" in picker.toolTip()
     assert picker.hide_unused.text() == "Hide unused"
@@ -2166,7 +2166,7 @@ def test_a_decoder_with_no_edge_on_any_line_is_not_run(window):
         next(row for row in card.signal_rows if row.spec.required).channel.findData(3))
     run_decode(window)
     assert window.result.annotations == []
-    assert "nie zmienia poziomu" in card.problem
+    assert "does not change level" in card.problem
     assert any(note.text() == card.problem for note in window.row_notes)
 
 
@@ -2178,6 +2178,6 @@ def test_a_flat_line_beside_a_working_one_does_not_stop_the_decoder(window):
     rows["tx"].channel.setCurrentIndex(rows["tx"].channel.findData(1))
     rows["rx"].channel.setCurrentIndex(rows["rx"].channel.findData(3))
     run_decode(window)
-    assert "RX nie zmienia poziomu" in card.status.text() and not card.problem
+    assert "RX does not change level" in card.status.text() and not card.problem
     assert [item for item in window.result.annotations if ":tx-" in item.row]
     assert not [item for item in window.result.annotations if ":rx-" in item.row]

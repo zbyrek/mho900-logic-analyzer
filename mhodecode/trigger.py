@@ -15,14 +15,14 @@ CHOICE, NUMBER, CHECK, HEX, BITS = "choice", "number", "check", "hex", "bits"
 
 # The condition of one channel, as on a trace in PulseView.
 NONE, LOW, HIGH, RISING, FALLING, ANY_EDGE = "", "L", "H", "R", "F", "E"
-CONDITIONS = (("Brak", NONE, "–"), ("Niski", LOW, "L"), ("Wysoki", HIGH, "H"),
-              ("Zbocze narastające", RISING, "↑"), ("Zbocze opadające", FALLING, "↓"), ("Dowolne zbocze", ANY_EDGE, "↕"))
+CONDITIONS = (("None", NONE, "–"), ("Low", LOW, "L"), ("High", HIGH, "H"),
+              ("Rising edge", RISING, "↑"), ("Falling edge", FALLING, "↓"), ("Either edge", ANY_EDGE, "↕"))
 EDGE_SLOPES = {RISING: "POSitive", FALLING: "NEGative", ANY_EDGE: "RFALl"}
 PATTERN_CHANNELS = (1, 2, 3, 4)
 
 SOURCES = tuple((f"CH{n}", f"CHANnel{n}") for n in range(1, 5)) + tuple((f"D{n}", f"D{n}") for n in range(16))
-POLARITY = (("Dodatnia", "POSitive"), ("Ujemna", "NEGative"))
-SWEEPS = (("Auto", "AUTO"), ("Normalny", "NORMal"), ("Pojedynczy", "SINGle"))
+POLARITY = (("Positive", "POSitive"), ("Negative", "NEGative"))
+SWEEPS = (("Auto", "AUTO"), ("Normal", "NORMal"), ("Single", "SINGle"))
 
 
 @dataclass(frozen=True)
@@ -61,153 +61,153 @@ def _numbers(key, label, values, when=()):
     return Field(key, label, CHOICE, tuple((str(value), str(value)) for value in values), when=when)
 
 
-EDGE = Mode("EDGE", "Zbocze", "EDGE", (
-    _source("SOURce", "Źródło"),
-    Field("SLOPe", "Zbocze", CHOICE, (("Narastające", "POSitive"), ("Opadające", "NEGative"), ("Oba", "RFALl"))),
-    _level("LEVel", "Poziom"),
+EDGE = Mode("EDGE", "Slope", "EDGE", (
+    _source("SOURce", "Source"),
+    Field("SLOPe", "Slope", CHOICE, (("Rising", "POSitive"), ("Falling", "NEGative"), ("Both", "RFALl"))),
+    _level("LEVel", "Level"),
 ))
 
 _RS232_DATA = ("DATA",)
 RS232 = Mode("RS232", "UART (RS232)", "RS232", (
-    _source("SOURce", "Źródło"),
-    _level("LEVel", "Poziom"),
-    Field("BAUD", "Prędkość", NUMBER, minimum=1, maximum=20_000_000, suffix=" bps"),
-    Field("POLarity", "Polaryzacja", CHOICE, POLARITY),
-    _numbers("WIDTh", "Bity danych", (5, 6, 7, 8)),
-    _numbers("STOP", "Bity stopu", ("1", "1.5", "2")),
-    Field("PARity", "Parzystość", CHOICE, (("Brak", "NONE"), ("Parzysta", "EVEN"), ("Nieparzysta", "ODD"))),
-    Field("WHEN", "Warunek", CHOICE, (("Bit startu", "STARt"), ("Błąd ramki", "ERRor"),
-                                      ("Błąd parzystości", "CERRor"), ("Dane", "DATA"))),
-    Field("DATA", "Dane (hex)", HEX, maximum=0xFF, when=_RS232_DATA),
+    _source("SOURce", "Source"),
+    _level("LEVel", "Level"),
+    Field("BAUD", "Speed", NUMBER, minimum=1, maximum=20_000_000, suffix=" bps"),
+    Field("POLarity", "Polarity", CHOICE, POLARITY),
+    _numbers("WIDTh", "Data bits", (5, 6, 7, 8)),
+    _numbers("STOP", "Stop bits", ("1", "1.5", "2")),
+    Field("PARity", "Parity", CHOICE, (("None", "NONE"), ("Even", "EVEN"), ("Odd", "ODD"))),
+    Field("WHEN", "Condition", CHOICE, (("Start bit", "STARt"), ("Frame error", "ERRor"),
+                                      ("Parity error", "CERRor"), ("Data", "DATA"))),
+    Field("DATA", "Data (hex)", HEX, maximum=0xFF, when=_RS232_DATA),
 ))
 
 _I2C_ADDRESS = ("ADDRess", "ADATa")
 _I2C_DATA = ("DATA", "ADATa")
 I2C = Mode("IIC", "I2C", "IIC", (
-    _source("SCL", "Źródło SCL"),
-    _level("CLEVel", "Poziom SCL"),
-    _source("SDA", "Źródło SDA"),
-    _level("DLEVel", "Poziom SDA"),
-    Field("WHEN", "Warunek", CHOICE, (("Start", "STARt"), ("Powtórzony start", "RESTart"), ("Stop", "STOP"),
-                                      ("Brak ACK", "NACKnowledge"), ("Adres", "ADDRess"), ("Dane", "DATA"),
-                                      ("Adres i dane", "ADATa"))),
-    _numbers("AWIDth", "Bity adresu", (7, 8, 10), when=_I2C_ADDRESS),
-    Field("ADDRess", "Adres (hex)", HEX, maximum=0x3FF, when=_I2C_ADDRESS),
-    Field("DIRection", "Kierunek", CHOICE, (("Zapis", "WRITe"), ("Odczyt", "READ"), ("Oba", "RWRite")), when=_I2C_ADDRESS),
-    Field("DBYTes", "Bajty danych", NUMBER, minimum=1, maximum=5, when=_I2C_DATA),
-    Field("DATA", "Dane (hex)", HEX, maximum=2 ** 40 - 1, when=_I2C_DATA),
+    _source("SCL", "SCL source"),
+    _level("CLEVel", "SCL level"),
+    _source("SDA", "SDA source"),
+    _level("DLEVel", "SDA level"),
+    Field("WHEN", "Condition", CHOICE, (("Start", "STARt"), ("Repeated start", "RESTart"), ("Stop", "STOP"),
+                                      ("Missing ACK", "NACKnowledge"), ("Address", "ADDRess"), ("Data", "DATA"),
+                                      ("Address and data", "ADATa"))),
+    _numbers("AWIDth", "Address bits", (7, 8, 10), when=_I2C_ADDRESS),
+    Field("ADDRess", "Address (hex)", HEX, maximum=0x3FF, when=_I2C_ADDRESS),
+    Field("DIRection", "Direction", CHOICE, (("Write", "WRITe"), ("Read", "READ"), ("Both", "RWRite")), when=_I2C_ADDRESS),
+    Field("DBYTes", "Data bytes", NUMBER, minimum=1, maximum=5, when=_I2C_DATA),
+    Field("DATA", "Data (hex)", HEX, maximum=2 ** 40 - 1, when=_I2C_DATA),
 ))
 
 _SPI_CS = ("CS",)
 SPI = Mode("SPI", "SPI", "SPI", (
-    _source("SCL", "Źródło zegara"),
-    _level("CLEVel", "Poziom zegara"),
-    Field("SLOPe", "Próbkowanie", CHOICE, (("Zbocze narastające", "POSitive"), ("Zbocze opadające", "NEGative"))),
-    _source("SDA", "Źródło danych"),
-    _level("DLEVel", "Poziom danych"),
-    Field("WHEN", "Warunek", CHOICE, (("CS aktywny", "CS"), ("Przerwa w zegarze", "TIMeout"))),
-    _source("CS", "Źródło CS", when=_SPI_CS),
-    _level("SLEVel", "Poziom CS", when=_SPI_CS),
-    Field("MODE", "Aktywny stan CS", CHOICE, (("Niski", "LOW"), ("Wysoki", "HIGH")), when=_SPI_CS),
-    Field("TIMeout", "Czas przerwy", NUMBER, minimum=8e-9, maximum=10.0, decimals=9, suffix=" s", when=("TIMeout",)),
-    Field("WIDTh", "Bity danych", NUMBER, minimum=4, maximum=32),
-    Field("DATA", "Dane (hex)", HEX, maximum=2 ** 32 - 1),
+    _source("SCL", "Clock source"),
+    _level("CLEVel", "Clock level"),
+    Field("SLOPe", "Sampling", CHOICE, (("Rising edge", "POSitive"), ("Falling edge", "NEGative"))),
+    _source("SDA", "Data source"),
+    _level("DLEVel", "Data level"),
+    Field("WHEN", "Condition", CHOICE, (("CS active", "CS"), ("Clock idle", "TIMeout"))),
+    _source("CS", "CS source", when=_SPI_CS),
+    _level("SLEVel", "CS level", when=_SPI_CS),
+    Field("MODE", "CS active state", CHOICE, (("Low", "LOW"), ("High", "HIGH")), when=_SPI_CS),
+    Field("TIMeout", "Idle time", NUMBER, minimum=8e-9, maximum=10.0, decimals=9, suffix=" s", when=("TIMeout",)),
+    Field("WIDTh", "Data bits", NUMBER, minimum=4, maximum=32),
+    Field("DATA", "Data (hex)", HEX, maximum=2 ** 32 - 1),
 ))
 
 _CAN_ID = ("IDRemote", "IDFRame", "IDData")
 _CAN_DATA = ("DAT", "IDData")
 # The guide lists DATaframe and ERFRame, but firmware 00.01.00 takes only the short forms (-222 otherwise).
 CAN = Mode("CAN", "CAN", "CAN", (
-    _source("SOURce", "Źródło"),
-    Field("STYPe", "Rodzaj sygnału", CHOICE, (("CAN_H", "H"), ("CAN_L", "L"), ("RX/TX", "RXTX"), ("Różnicowy", "DIFFerential"))),
-    _level("LEVel", "Poziom"),
-    Field("BAUD", "Prędkość", NUMBER, minimum=10_000, maximum=5_000_000, suffix=" bps"),
-    Field("SPOint", "Punkt próbkowania", NUMBER, minimum=10, maximum=90, suffix=" %"),
-    Field("WHEN", "Warunek", CHOICE, (("Początek ramki", "SOF"), ("Koniec ramki", "EOF"), ("Ramka zdalna o ID", "IDRemote"),
-                                      ("Ramka przeciążenia", "OVERload"), ("Ramka o ID", "IDFRame"),
-                                      ("Ramka z danymi", "DAT"), ("ID i dane", "IDData"), ("Ramka błędu", "ERFR"),
-                                      ("Błąd ACK", "ERANswer"), ("Błąd CRC", "ERCHeck"), ("Błąd formatu", "ERFormat"),
-                                      ("Dowolny błąd", "ERRandom"), ("Błąd bit stuffingu", "ERBit"))),
-    Field("EXTended", "ID rozszerzone (29 bitów)", CHECK, when=("IDRemote", "IDFRame")),
-    Field("DEFine", "Pole Dane dotyczy", CHOICE, (("Danych", "DATA"), ("ID", "ID")), when=("IDData",)),
-    Field("DWIDth", "Bajty danych", NUMBER, minimum=1, maximum=8, when=_CAN_DATA),
-    Field("DATA", "Dane lub ID (hex)", HEX, maximum=2 ** 64 - 1, when=_CAN_ID + ("DAT",)),
+    _source("SOURce", "Source"),
+    Field("STYPe", "Signal type", CHOICE, (("CAN_H", "H"), ("CAN_L", "L"), ("RX/TX", "RXTX"), ("Differential", "DIFFerential"))),
+    _level("LEVel", "Level"),
+    Field("BAUD", "Speed", NUMBER, minimum=10_000, maximum=5_000_000, suffix=" bps"),
+    Field("SPOint", "Sample point", NUMBER, minimum=10, maximum=90, suffix=" %"),
+    Field("WHEN", "Condition", CHOICE, (("Start of frame", "SOF"), ("End of frame", "EOF"), ("Remote frame with ID", "IDRemote"),
+                                      ("Overload frame", "OVERload"), ("Frame with ID", "IDFRame"),
+                                      ("Frame with data", "DAT"), ("ID and data", "IDData"), ("Error frame", "ERFR"),
+                                      ("ACK error", "ERANswer"), ("CRC error", "ERCHeck"), ("Format error", "ERFormat"),
+                                      ("Any error", "ERRandom"), ("Bit stuffing error", "ERBit"))),
+    Field("EXTended", "Extended ID (29 bits)", CHECK, when=("IDRemote", "IDFRame")),
+    Field("DEFine", "The Data field holds", CHOICE, (("The data", "DATA"), ("ID", "ID")), when=("IDData",)),
+    Field("DWIDth", "Data bytes", NUMBER, minimum=1, maximum=8, when=_CAN_DATA),
+    Field("DATA", "Data or ID (hex)", HEX, maximum=2 ** 64 - 1, when=_CAN_ID + ("DAT",)),
 ))
 
 _LIN_ID = ("ID", "IDData")
 _LIN_DATA = ("DATA", "IDData")
 LIN = Mode("LIN", "LIN", "LIN", (
-    _source("SOURce", "Źródło"),
-    _level("LEVel", "Poziom"),
-    Field("STANdard", "Standard", CHOICE, (("LIN 1.x", "1X"), ("LIN 2.x", "2X"), ("Oba", "BOTH"))),
-    Field("BAUD", "Prędkość", NUMBER, minimum=1000, maximum=20_000_000, suffix=" bps"),
-    Field("SAMPlepoint", "Punkt próbkowania", NUMBER, minimum=10, maximum=90, suffix=" %"),
-    Field("WHEN", "Warunek", CHOICE, (("Pole synchronizacji", "SYNCbreak"), ("ID", "ID"), ("Dane", "DATA"), ("ID i dane", "IDData"),
-                                      ("Ramka uśpienia", "SLEep"), ("Ramka wybudzenia", "WAKeup"), ("Błąd", "ERRor"))),
-    Field("ERRor", "Rodzaj błędu", CHOICE, (("Synchronizacja", "SYNC"), ("Parzystość ID", "ID"), ("Suma kontrolna", "CHECk")), when=("ERRor",)),
+    _source("SOURce", "Source"),
+    _level("LEVel", "Level"),
+    Field("STANdard", "Standard", CHOICE, (("LIN 1.x", "1X"), ("LIN 2.x", "2X"), ("Both", "BOTH"))),
+    Field("BAUD", "Speed", NUMBER, minimum=1000, maximum=20_000_000, suffix=" bps"),
+    Field("SAMPlepoint", "Sample point", NUMBER, minimum=10, maximum=90, suffix=" %"),
+    Field("WHEN", "Condition", CHOICE, (("Sync field", "SYNCbreak"), ("ID", "ID"), ("Data", "DATA"), ("ID and data", "IDData"),
+                                      ("Sleep frame", "SLEep"), ("Wakeup frame", "WAKeup"), ("Error", "ERRor"))),
+    Field("ERRor", "Error type", CHOICE, (("Sync", "SYNC"), ("ID parity", "ID"), ("Checksum", "CHECk")), when=("ERRor",)),
     Field("ID", "ID (hex)", HEX, maximum=63, when=_LIN_ID),
-    Field("DATA", "Dane (hex)", HEX, maximum=2 ** 64 - 1, when=_LIN_DATA, bits=True),
+    Field("DATA", "Data (hex)", HEX, maximum=2 ** 64 - 1, when=_LIN_DATA, bits=True),
 ))
 
-_COMPARISONS = (("Równe", "EQUal"), ("Różne", "NOTequal"), ("Większe", "GREaterthan"), ("Mniejsze", "LESSthan"),
-                ("W zakresie", "INRange"), ("Poza zakresem", "OUTRange"))
+_COMPARISONS = (("Equal", "EQUal"), ("Not equal", "NOTequal"), ("Greater", "GREaterthan"), ("Less", "LESSthan"),
+                ("In range", "INRange"), ("Out of range", "OUTRange"))
 _RANGES = ("INRange", "OUTRange")
 _SINGLE_VALUES = ("EQUal", "NOTequal", "GREaterthan", "LESSthan")
 I2S = Mode("IIS", "I2S", "IIS", (
-    _source("SOURce:CLOCk", "Źródło zegara"),
-    _level("CLEVel", "Poziom zegara"),
-    Field("CLOCk:SLOPe", "Próbkowanie", CHOICE, (("Zbocze narastające", "POSitive"), ("Zbocze opadające", "NEGative"))),
-    _source("SOURce:WSELect", "Źródło WS"),
-    _level("SLEVel", "Poziom WS"),
-    _source("SOURce:DATA", "Źródło danych"),
-    _level("DLEVel", "Poziom danych"),
-    Field("ALIGnment", "Wyrównanie", CHOICE, (("I2S", "IIS"), ("Do lewej", "LJ"), ("Do prawej", "RJ"))),
-    Field("WIDTh", "Bity w słowie", NUMBER, minimum=4, maximum=32),
-    Field("UWIDth", "Bity użyte", NUMBER, minimum=4, maximum=32),
-    Field("AUDio", "Kanał audio", CHOICE, (("Lewy", "LEFT"), ("Prawy", "RIGHt"), ("Dowolny", "EITHer"))),
-    Field("WHEN", "Warunek", CHOICE, _COMPARISONS),
-    Field("DATA", "Dane (hex)", HEX, maximum=2 ** 32 - 1, when=_SINGLE_VALUES),
+    _source("SOURce:CLOCk", "Clock source"),
+    _level("CLEVel", "Clock level"),
+    Field("CLOCk:SLOPe", "Sampling", CHOICE, (("Rising edge", "POSitive"), ("Falling edge", "NEGative"))),
+    _source("SOURce:WSELect", "WS source"),
+    _level("SLEVel", "WS level"),
+    _source("SOURce:DATA", "Data source"),
+    _level("DLEVel", "Data level"),
+    Field("ALIGnment", "Alignment", CHOICE, (("I2S", "IIS"), ("Left-justified", "LJ"), ("Right-justified", "RJ"))),
+    Field("WIDTh", "Bits per word", NUMBER, minimum=4, maximum=32),
+    Field("UWIDth", "Bits used", NUMBER, minimum=4, maximum=32),
+    Field("AUDio", "Audio channel", CHOICE, (("Left", "LEFT"), ("Right", "RIGHt"), ("Any", "EITHer"))),
+    Field("WHEN", "Condition", CHOICE, _COMPARISONS),
+    Field("DATA", "Data (hex)", HEX, maximum=2 ** 32 - 1, when=_SINGLE_VALUES),
     # The guide relates the index range to UWIDth. As for 1553B, the indices above the bits stand for
     # hex digits and overwrite groups of bits.
-    Field("DMIN", "Dane od (bity)", BITS, when=_RANGES, width=32, width_from="UWIDth"),
-    Field("DMAX", "Dane do (bity)", BITS, when=_RANGES, width=32, width_from="UWIDth"),
+    Field("DMIN", "Data from (bits)", BITS, when=_RANGES, width=32, width_from="UWIDth"),
+    Field("DMAX", "Data to (bits)", BITS, when=_RANGES, width=32, width_from="UWIDth"),
 ))
 
 _FLEX_FRAME = ("FRAMe",)
 FLEXRAY = Mode("FLEXray", "FlexRay", "FLEXray", (
-    _source("SOURce", "Źródło"),
-    _level("LEVel", "Poziom"),
-    Field("BAUD", "Prędkość", CHOICE, (("2,5 Mb/s", "2500000"), ("5 Mb/s", "5000000"), ("10 Mb/s", "10000000"))),
-    Field("CH", "Kanał magistrali", CHOICE, (("A", "A"), ("B", "B"))),
-    Field("WHEN", "Warunek", CHOICE, (("Ramka", "FRAMe"), ("Symbol", "SYMBol"), ("Błąd", "ERRor"), ("Pozycja", "TSS"))),
-    Field("FRAMe", "Rodzaj ramki", CHOICE, (("Dowolna", "ANY"), ("Pusta", "NULL"), ("Synchronizacji", "SYNC"), ("Startowa", "STAR")), when=_FLEX_FRAME),
-    Field("IDCmp", "Porównanie ID", CHOICE, _COMPARISONS, when=_FLEX_FRAME),
-    Field("MINid", "ID od", NUMBER, maximum=1023, when=_FLEX_FRAME),
-    Field("MAXid", "ID do", NUMBER, maximum=1023, when=_FLEX_FRAME),
-    Field("CYCComp", "Porównanie licznika cykli", CHOICE, _COMPARISONS, when=_FLEX_FRAME),
-    Field("MINCy", "Licznik cykli od", NUMBER, maximum=63, when=_FLEX_FRAME),
-    Field("MAXCy", "Licznik cykli do", NUMBER, maximum=63, when=_FLEX_FRAME),
+    _source("SOURce", "Source"),
+    _level("LEVel", "Level"),
+    Field("BAUD", "Speed", CHOICE, (("2.5 Mb/s", "2500000"), ("5 Mb/s", "5000000"), ("10 Mb/s", "10000000"))),
+    Field("CH", "Bus channel", CHOICE, (("A", "A"), ("B", "B"))),
+    Field("WHEN", "Condition", CHOICE, (("Frame", "FRAMe"), ("Symbol", "SYMBol"), ("Error", "ERRor"), ("Position", "TSS"))),
+    Field("FRAMe", "Frame type", CHOICE, (("Any kind", "ANY"), ("Null", "NULL"), ("Sync frame", "SYNC"), ("Startup", "STAR")), when=_FLEX_FRAME),
+    Field("IDCmp", "ID comparison", CHOICE, _COMPARISONS, when=_FLEX_FRAME),
+    Field("MINid", "ID from", NUMBER, maximum=1023, when=_FLEX_FRAME),
+    Field("MAXid", "ID to", NUMBER, maximum=1023, when=_FLEX_FRAME),
+    Field("CYCComp", "Cycle count comparison", CHOICE, _COMPARISONS, when=_FLEX_FRAME),
+    Field("MINCy", "Cycle count from", NUMBER, maximum=63, when=_FLEX_FRAME),
+    Field("MAXCy", "Cycle count to", NUMBER, maximum=63, when=_FLEX_FRAME),
     Field("SYMBol", "Symbol", CHOICE, (("CAS", "CAS"), ("WUS", "WUS")), when=("SYMBol",)),
-    Field("ERRor", "Rodzaj błędu", CHOICE, (("CRC nagłówka", "HEAD"), ("CRC końca ramki", "TRAiler"), ("Dekodowania", "DECode"), ("Dowolny", "ANY")), when=("ERRor",)),
-    Field("POS", "Pozycja", CHOICE, (("TSS", "TSS"), ("FSS", "FSS"), ("FES", "FES"), ("DTS", "DTS")), when=("TSS",)),
+    Field("ERRor", "Error type", CHOICE, (("Header CRC", "HEAD"), ("Trailer CRC", "TRAiler"), ("Decoding", "DECode"), ("Any", "ANY")), when=("ERRor",)),
+    Field("POS", "Position", CHOICE, (("TSS", "TSS"), ("FSS", "FSS"), ("FES", "FES"), ("DTS", "DTS")), when=("TSS",)),
 ))
 
 M1553 = Mode("M1553", "MIL-STD-1553B", "M1553", (
-    _source("SOURce", "Źródło"),
-    Field("POLarity", "Polaryzacja", CHOICE, POLARITY),
-    Field("WINDow", "Regulacja poziomu", CHOICE, (("Górny", "TA"), ("Dolny", "TB"), ("Oba", "TAB"))),
-    _level("ALEVel", "Poziom górny"),
-    _level("BLEVel", "Poziom dolny"),
-    Field("WHEN", "Warunek", CHOICE, (("Synchronizacja", "SYNCbreak"), ("Słowo danych", "DATA"), ("Słowo rozkazu", "CMD"), ("Słowo statusu", "STATus"), ("Błąd", "ERRor"))),
-    Field("SYNC", "Rodzaj synchronizacji", CHOICE, (("Dane", "DATA"), ("Rozkaz lub status", "STATus"), ("Dowolna", "ALL")), when=("SYNCbreak",)),
-    Field("ERRor", "Rodzaj błędu", CHOICE, (("Synchronizacja", "SYNC"), ("Parzystość", "ERR")), when=("ERRor",)),
-    Field("DATComp", "Porównanie danych", CHOICE, _COMPARISONS, when=("DATA",)),
+    _source("SOURce", "Source"),
+    Field("POLarity", "Polarity", CHOICE, POLARITY),
+    Field("WINDow", "Level adjustment", CHOICE, (("Upper", "TA"), ("Lower", "TB"), ("Both", "TAB"))),
+    _level("ALEVel", "Upper level"),
+    _level("BLEVel", "Lower level"),
+    Field("WHEN", "Condition", CHOICE, (("Sync", "SYNCbreak"), ("Data word", "DATA"), ("Command word", "CMD"), ("Status word", "STATus"), ("Error", "ERRor"))),
+    Field("SYNC", "Sync type", CHOICE, (("Data", "DATA"), ("Command or status", "STATus"), ("Any kind", "ALL")), when=("SYNCbreak",)),
+    Field("ERRor", "Error type", CHOICE, (("Sync", "SYNC"), ("Parity", "ERR")), when=("ERRor",)),
+    Field("DATComp", "Data comparison", CHOICE, _COMPARISONS, when=("DATA",)),
     # The guide's index ranges run through the binary bits and then the hex digits, which overwrite
     # groups of bits, so these widths are the binary part only (measured on the scope).
-    Field("DMIN", "Dane od (bity)", BITS, when=("DATA",), width=16),
-    Field("DMAX", "Dane do (bity)", BITS, when=("DATA",), width=16),
-    Field("DRTA", "Adres terminala (bity)", BITS, when=("CMD", "STATus"), width=5),
-    Field("DBIT", "Pozostałe bity", BITS, when=("STATus",), width=11),
+    Field("DMIN", "Data from (bits)", BITS, when=("DATA",), width=16),
+    Field("DMAX", "Data to (bits)", BITS, when=("DATA",), width=16),
+    Field("DRTA", "Terminal address (bits)", BITS, when=("CMD", "STATus"), width=5),
+    Field("DBIT", "Remaining bits", BITS, when=("STATus",), width=11),
 ))
 
 MODES = (EDGE, RS232, I2C, SPI, CAN, LIN, I2S, FLEXRAY, M1553)
@@ -312,9 +312,9 @@ def parse_hex(text: str, maximum: int) -> int:
     try:
         value = int(text, 16)
     except ValueError:
-        raise ValueError(tr("Wartość {text} nie jest liczbą szesnastkową.", text=text)) from None
+        raise ValueError(tr("{text} is not a hexadecimal number.", text=text)) from None
     if not 0 <= value <= maximum:
-        raise ValueError(tr("Wartość {text} jest poza zakresem 0…{maximum:X}.", text=text, maximum=maximum))
+        raise ValueError(tr("{text} is outside the range 0…{maximum:X}.", text=text, maximum=maximum))
     return value
 
 
@@ -323,7 +323,7 @@ def bit_codes(text: str, width: int) -> list[int]:
     codes = {"0": 0, "1": 1, "X": 255}
     text = text.strip().upper()
     if len(text) > width or any(char not in codes for char in text):
-        raise ValueError(tr("Pole bitowe przyjmuje do {width} znaków 0, 1 lub X.", width=width))
+        raise ValueError(tr("A bit field takes up to {width} characters 0, 1 or X.", width=width))
     return [codes[char] for char in text.ljust(width, "X")]
 
 

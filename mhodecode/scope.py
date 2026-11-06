@@ -128,7 +128,7 @@ class Preamble:
     def parse(cls, text: str) -> "Preamble":
         parts = text.strip().split(",")
         if len(parts) != 10:
-            raise ScopeError(tr("Nieoczekiwana odpowiedź WAV:PRE: {text!r}", text=text))
+            raise ScopeError(tr("Unexpected WAV:PRE reply: {text!r}", text=text))
         return cls(
             int(float(parts[0])), int(float(parts[1])), int(float(parts[2])),
             int(float(parts[3])), float(parts[4]), float(parts[5]),
@@ -193,7 +193,7 @@ class Scope:
             try:
                 sock = socket.create_connection((self.host, self.port), self.timeout)
             except OSError as exc:
-                raise ScopeError(tr("Brak połączenia z {host}:{port}: {error}",
+                raise ScopeError(tr("Cannot connect to {host}:{port}: {error}",
                                     host=self.host, port=self.port, error=exc)) from exc
             sock.settimeout(ABORT_POLL_S)
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -209,14 +209,14 @@ class Scope:
             started = time.monotonic()
             while not (tail.endswith(b"\n") and IDENTITY_LINE.search(tail)):
                 if time.monotonic() - started > LEFTOVER_LIMIT_S:
-                    raise ScopeError(tr("Brak odpowiedzi na {command}: {error}", command="*IDN?", error="timeout"))
+                    raise ScopeError(tr("No reply to {command}: {error}", command="*IDN?", error="timeout"))
                 chunk = self._receive_some(self.timeout)
                 received += len(chunk)
                 tail = (tail + chunk)[-1024:]
             line = bytes(tail).rsplit(b"\n", 2)[-2]
             if received == len(line) + 1:
                 return line.decode("ascii", "replace").strip()
-            self._note(tr("Odrzucono {count} bajtów po przerwanym transferze", count=received - len(line) - 1))
+            self._note(tr("Discarded {count} bytes after an interrupted transfer", count=received - len(line) - 1))
 
     def recover(self) -> None:
         """Bring the link back to a clean state after an abort."""
@@ -242,7 +242,7 @@ class Scope:
     # ---- raw SCPI -------------------------------------------------------
     def _socket(self) -> socket.socket:
         if self._sock is None:
-            raise ScopeError(tr("Brak połączenia z oscyloskopem"))
+            raise ScopeError(tr("Not connected to the oscilloscope"))
         return self._sock
 
     def write(self, command: str) -> None:
@@ -251,7 +251,7 @@ class Scope:
             try:
                 self._socket().sendall((command + "\n").encode("ascii"))
             except OSError as exc:
-                raise ScopeError(tr("Błąd wysyłania ({command}): {error}", command=command, error=exc)) from exc
+                raise ScopeError(tr("Send error ({command}): {error}", command=command, error=exc)) from exc
 
     def _receive_into(self, view: memoryview, limit: float) -> int:
         """Fill part of view; waits at most limit seconds for data and stops on abort."""
@@ -263,12 +263,12 @@ class Scope:
                 got = sock.recv_into(view)
             except socket.timeout:
                 if time.monotonic() - waited_from > limit:
-                    raise ScopeError(tr("Brak danych z oscyloskopu przez {seconds:.0f} s", seconds=limit)) from None
+                    raise ScopeError(tr("No data from the oscilloscope for {seconds:.0f} s", seconds=limit)) from None
                 continue
             except OSError as exc:
-                raise ScopeError(tr("Błąd odczytu: {error}", error=exc)) from exc
+                raise ScopeError(tr("Read error: {error}", error=exc)) from exc
             if got == 0:
-                raise ScopeError(tr("Oscyloskop zamknął połączenie"))
+                raise ScopeError(tr("The oscilloscope closed the connection"))
             return got
 
     def _receive_some(self, limit: float) -> bytes:
@@ -308,7 +308,7 @@ class Scope:
             self.write(command)
             head = self._read_exact(2, timeout)
             if head[:1] != b"#":
-                raise ScopeError(tr("Nieoczekiwana odpowiedź na {command}: {head!r}", command=command, head=bytes(head)))
+                raise ScopeError(tr("Unexpected reply to {command}: {head!r}", command=command, head=bytes(head)))
             length = int(self._read_exact(int(head[1:2]), timeout))
             data = self._read_exact(length, timeout, progress)
             self._read_exact(1, timeout)  # block terminator
@@ -389,14 +389,14 @@ class Scope:
         if plan.depth is not None:  # after the channels, on which its limit depends
             self.set_memory_depth(plan.depth)
         self.query("*OPC?")
-        notes = [tr("oscyloskop zgłosił {error}", error=error) for error in self.errors()]
+        notes = [tr("the scope reported {error}", error=error) for error in self.errors()]
         self._apply_trigger(plan.trigger)
         if plan.pretrigger is not None:
             notes += self._apply_pretrigger(plan.pretrigger)
         if plan.depth not in (None, "AUTO"):
             depth = self.query_float(":ACQuire:MDEPth?")
             if depth != float(plan.depth):
-                notes.append(tr("głębokość pamięci to {got:,.0f} punktów zamiast {wanted:,.0f}.", got=depth, wanted=float(plan.depth)))
+                notes.append(tr("the memory depth is {got:,.0f} points instead of {wanted:,.0f}.", got=depth, wanted=float(plan.depth)))
         return notes
 
     def _apply_pretrigger(self, percent: float) -> list[str]:
@@ -408,10 +408,10 @@ class Scope:
         wanted = length * (0.5 - percent / 100)
         self.write(f":TIMebase:MAIN:OFFSet {wanted:.10g}")
         self.query("*OPC?")
-        notes = [tr("oscyloskop zgłosił {error}", error=error) for error in self.errors()]
+        notes = [tr("the scope reported {error}", error=error) for error in self.errors()]
         got = self.query_float(":TIMebase:MAIN:OFFSet?")
         if abs(got - wanted) > length * PRETRIGGER_TOLERANCE:
-            notes.append(tr("pretrigger to {got:.0f} % zamiast {wanted:.0f} %: oscyloskop ograniczył przesunięcie podstawy czasu do {offset}.",
+            notes.append(tr("pretrigger is {got:.0f} % instead of {wanted:.0f} %: the scope limited the time base offset to {offset}.",
                             got=(0.5 - got / length) * 100, wanted=percent, offset=format_si(got, "s")))
         return notes
 
@@ -423,7 +423,7 @@ class Scope:
         self.query("*OPC?")
         refused = self.errors()
         if refused:
-            raise ScopeError(tr("Oscyloskop odrzucił ustawienia wyzwalania: {errors}", errors="; ".join(refused)))
+            raise ScopeError(tr("The scope refused the trigger settings: {errors}", errors="; ".join(refused)))
 
     def _apply_digital(self, wanted: set, thresholds: dict) -> None:
         if not wanted:
@@ -464,7 +464,7 @@ class Scope:
         while self.query(":TRIGger:STATus?") == "STOP":
             if timeout is not None and time.monotonic() - started > timeout:
                 self._acquiring = False
-                raise ScopeError(tr("Akwizycja nie wystartowała w ciągu {seconds} s", seconds=timeout))
+                raise ScopeError(tr("The acquisition did not start within {seconds} s", seconds=timeout))
             abort.sleep(0.02)
         self.write(":SINGle")
         started = time.monotonic()
@@ -480,7 +480,7 @@ class Scope:
             abort.sleep(0.02)
         self._acquiring = False
         self.stop()
-        raise ScopeError(tr("Akwizycja nie zakończyła się w ciągu {seconds} s", seconds=timeout))
+        raise ScopeError(tr("The acquisition did not finish within {seconds} s", seconds=timeout))
 
     def fetch(self, channel: int, points: int | None = None, progress=None, sample_format: str = DEFAULT_FORMAT) -> Waveform:
         """Read the channel from internal memory (the scope must be stopped).
@@ -495,7 +495,7 @@ class Scope:
             # A channel that is off refuses this with -200 and the source stays where it was, so what
             # follows would be another channel's data under this channel's name (measured, firmware 00.01.00).
             if self.query(":WAVeform:SOURce?") != f"CHAN{channel}":
-                raise ScopeError(tr("Oscyloskop nie daje danych CH{channel}. Włącz ten kanał.", channel=channel))
+                raise ScopeError(tr("The scope gives no data for CH{channel}. Turn this channel on.", channel=channel))
             self.write(f":WAVeform:FORMat {sample_format}")
             # The read window survives a change of memory depth, and once it lies beyond
             # the memory the firmware rejects new limits (-200). Leaving RAW mode resets it
@@ -518,7 +518,7 @@ class Scope:
             raw = self.query_block(":WAVeform:DATA?", progress=report)
             while not raw:
                 if time.monotonic() - started > EMPTY_BLOCK_LIMIT_S:
-                    raise ScopeError(tr("Brak danych przebiegu na CH{channel}", channel=channel))
+                    raise ScopeError(tr("No waveform data on CH{channel}", channel=channel))
                 abort.sleep(EMPTY_BLOCK_RETRY_S)
                 raw = self.query_block(":WAVeform:DATA?", progress=report)
             codes = np.frombuffer(raw, dtype=SAMPLE_TYPES[sample_format])
@@ -590,7 +590,7 @@ class Scope:
             started = time.monotonic()
             while self.query(":SAVE:STATus?") != "1" or not self._ftp_exists(MEMORY_FILE):
                 if time.monotonic() - started > SAVE_LIMIT_S:
-                    raise ScopeError(tr("Oscyloskop nie zapisał pamięci w ciągu {seconds:.0f} s", seconds=SAVE_LIMIT_S))
+                    raise ScopeError(tr("The scope did not save its memory within {seconds:.0f} s", seconds=SAVE_LIMIT_S))
                 abort.sleep(SAVE_POLL_S)
         finally:
             # An abort must not leave the user's own setting changed.
@@ -610,7 +610,7 @@ class Scope:
             with self._ftp() as ftp:
                 return name in ftp.nlst()
         except (OSError, ftplib.Error) as exc:
-            raise ScopeError(tr("Błąd FTP: {error}", error=exc)) from exc
+            raise ScopeError(tr("FTP error: {error}", error=exc)) from exc
 
     def _ftp_remove(self, name: str) -> None:
         try:
@@ -618,7 +618,7 @@ class Scope:
                 if name in ftp.nlst():
                     ftp.delete(name)
         except (OSError, ftplib.Error) as exc:
-            raise ScopeError(tr("Błąd FTP: {error}", error=exc)) from exc
+            raise ScopeError(tr("FTP error: {error}", error=exc)) from exc
 
     def _ftp_read(self, name: str, progress=None) -> bytes:
         self._note(f"FTP RETR {name}")
@@ -635,7 +635,7 @@ class Scope:
             with self._ftp() as ftp:
                 ftp.retrbinary(f"RETR {name}", store, FTP_BLOCK_BYTES)
         except (OSError, ftplib.Error) as exc:
-            raise ScopeError(tr("Błąd FTP: {error}", error=exc)) from exc
+            raise ScopeError(tr("FTP error: {error}", error=exc)) from exc
         self._note(f"< {len(data):,} B, {time.monotonic() - started:.3f} s")
         return bytes(data)
 
@@ -682,5 +682,5 @@ class Scope:
                 ftp.login()
                 ftp.storbinary(f"STOR {ARB_FTP_DIR}/{name}", io.BytesIO(text.encode("ascii")))
         except (OSError, ftplib.Error) as exc:
-            raise ScopeError(tr("Błąd wysyłania {name} przez FTP: {error}", name=name, error=exc)) from exc
+            raise ScopeError(tr("Error sending {name} over FTP: {error}", name=name, error=exc)) from exc
         return f"{ARB_SCOPE_DIR}/{name}"

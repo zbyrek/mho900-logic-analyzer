@@ -14,13 +14,13 @@ ANALOG = (1, 2, 3, 4)
 DIGITAL = tuple(digital_channel(number) for number in range(DIGITAL_CHANNELS))
 DIGITAL_COLUMNS = 8
 DEFAULT_CHANNELS = "1"  # every further channel takes sample rate and memory from the others
-READ_FORMATS = (("BYTE, 8 bitów", "BYTE"), ("WORD, 16 bitów", "WORD"), ("Plik BIN, napięcia 32 bity", "FILE"))
-NO_CHANGE = "Bez zmian"
+READ_FORMATS = (("BYTE, 8 bits", "BYTE"), ("WORD, 16 bits", "WORD"), ("BIN file, 32-bit voltages", "FILE"))
+NO_CHANGE = "No change"
 VOLTS_LIMIT = 100000.0  # far beyond any input with any probe
 VOLTS_DECIMALS = 6
 SCALE_STEPS = 10  # one click of a spin box moves the limit by this part of the shown range
 THRESHOLD_STEP = 0.1
-POD_LABELS = {1: "Próg D0–D7", 2: "Próg D8–D15"}
+POD_LABELS = {1: "Threshold D0–D7", 2: "Threshold D8–D15"}
 POD_THRESHOLD_LIMIT = 15.0  # the range the Oscilloscope tab gives a group
 PRETRIGGER_DEFAULT = 50
 PRETRIGGER_STEP = 5
@@ -97,7 +97,7 @@ class ProtocolForm(QtWidgets.QWidget):
     def _text(self, field):
         line = QtWidgets.QLineEdit(str(self.settings.value(self._key(field), "0" if field.kind == trigger.HEX else "")))
         if field.kind == trigger.BITS:
-            self.owner._bind(line.setToolTip, "0, 1 lub X (dowolny), najstarszy bit pierwszy.")
+            self.owner._bind(line.setToolTip, "0, 1 or X (any), the most significant bit first.")
         line.textChanged.connect(lambda text: self.settings.setValue(self._key(field), text))
         return line
 
@@ -186,8 +186,8 @@ class ScopeSettings(QtWidgets.QPushButton):
         holder.setDefaultWidget(self._build())
         menu.addAction(holder)
         self.setMenu(menu)
-        owner._bind(self.setText, "Ustawienia oscyloskopu")
-        owner._bind(lambda _text: self._refresh(), "Kanały")
+        owner._bind(self.setText, "Scope settings")
+        owner._bind(lambda _text: self._refresh(), "Channels")
         self._show_trigger_form()
 
     # ---- layout ---------------------------------------------------------
@@ -208,14 +208,14 @@ class ScopeSettings(QtWidgets.QPushButton):
         return group
 
     def _channels_group(self):
-        group = self._group("Kanały")
+        group = self._group("Channels")
         layout = QtWidgets.QVBoxLayout(group)
-        layout.addLayout(self._channel_grid("Analogowe", ANALOG, "CH1–CH4, czytane przez SCPI."))
-        layout.addLayout(self._channel_grid("Cyfrowe", DIGITAL, "D0–D15, czytane wolniej, przez plik z pamięci oscyloskopu."))
+        layout.addLayout(self._channel_grid("Analog", ANALOG, "CH1–CH4, read over SCPI."))
+        layout.addLayout(self._channel_grid("Digital", DIGITAL, "D0–D15, read more slowly, through a file of the scope's memory."))
         layout.addLayout(self._pod_thresholds())
         self.hide_unused = QtWidgets.QPushButton()
-        self.owner._bind(self.hide_unused.setText, "Ukryj nieużywane")
-        self.owner._bind(self.hide_unused.setToolTip, "Odznacza kanały bez danych w ostatnim odczycie. Zaznaczony z powrotem kanał znów się pokazuje.")
+        self.owner._bind(self.hide_unused.setText, "Hide unused")
+        self.owner._bind(self.hide_unused.setToolTip, "Unticks the channels without data in the last read. A channel ticked again shows again.")
         self.hide_unused.clicked.connect(self.hide_requested)
         layout.addWidget(self.hide_unused)
         return group
@@ -229,8 +229,8 @@ class ScopeSettings(QtWidgets.QPushButton):
         self.owner._bind(label.setToolTip, tip)
         head.addWidget(label)
         head.addStretch(1)
-        for text, checked, button_tip in (("Wszystkie", True, "Zaznacza wszystkie kanały w tej grupie."),
-                                          ("Żadne", False, "Odznacza kanały w tej grupie, oprócz użytych w dekoderach i wyzwalaniu.")):
+        for text, checked, button_tip in (("All", True, "Ticks all channels of this group."),
+                                          ("Select none", False, "Unticks the channels of this group, except those used by decoders and the trigger.")):
             button = QtWidgets.QPushButton()
             self.owner._bind(button.setText, text)
             self.owner._bind(button.setToolTip, button_tip)
@@ -246,8 +246,7 @@ class ScopeSettings(QtWidgets.QPushButton):
 
     def _pod_thresholds(self):
         layout = QtWidgets.QGridLayout()
-        tip = ("Akwizycja ustawia ten próg, jeśli któryś kanał tej grupy jest włączony. "
-               "Odznaczone: zostaje próg ustawiony na oscyloskopie. Czytanie pamięci go nie wysyła.")
+        tip = ("An acquisition sets this threshold if any channel of this group is on. Unticked: the threshold set on the scope stays. Reading the memory does not send it.")
         for row, pod in enumerate(DIGITAL_PODS):
             box = self._stored_check(f"pod_threshold_{pod}_on", False, POD_LABELS[pod], tip)
             spin = QtWidgets.QDoubleSpinBox()
@@ -294,26 +293,24 @@ class ScopeSettings(QtWidgets.QPushButton):
         return box
 
     def _capture_group(self):
-        group = self._group("Akwizycja")
+        group = self._group("Acquisition")
         layout = QtWidgets.QVBoxLayout(group)
         form = QtWidgets.QFormLayout()
         self.depth = self._stored_combo("capture_depth", ((NO_CHANGE, None), *DEPTHS))
-        self.owner._bind(self.depth.setToolTip, "Więcej punktów to dłuższy zapis i dłuższy odczyt. Auto: liczbę punktów dobiera oscyloskop tak, by zapis objął ekran. "
-                                                "Bez zmian zostawia to, co jest na oscyloskopie.")
-        form.addRow(self.owner._label("Głębokość pamięci"), self.depth)
+        self.owner._bind(self.depth.setToolTip, "More points make a longer record and a longer read. Auto: the scope picks the number of points so that the record covers the screen. No change leaves what is set on the scope.")
+        form.addRow(self.owner._label("Memory depth"), self.depth)
         scales = tuple((generator.format_time_scale(value), value) for value in generator.time_scale_choices())
         self.time_scale = self._stored_combo("capture_time_scale", ((NO_CHANGE, None), *scales))
-        form.addRow(self.owner._label("Podstawa czasu"), self.time_scale)
+        form.addRow(self.owner._label("Time base"), self.time_scale)
         form.addRow(*self._pretrigger_row())
         self.read_format = QtWidgets.QComboBox()
         self.owner._fill_combo(self.read_format, READ_FORMATS)
-        self.owner._bind(self.read_format.setToolTip, "BYTE jest najszybszy. WORD jest dokładniejszy, ale 2× wolniejszy. "
-                                                      "Kanały D0–D15 zawsze idą przez plik BIN.")
-        form.addRow(self.owner._label("Format odczytu"), self.read_format)
+        self.owner._bind(self.read_format.setToolTip, "BYTE is the fastest. WORD is more accurate but 2× slower. Channels D0–D15 always go through the BIN file.")
+        form.addRow(self.owner._label("Read format"), self.read_format)
         layout.addLayout(form)
-        self.force_dc = self._stored_check("force_dc", True, "Wymuś DC", "Wymuś sprzężenie DC na używanych kanałach")
-        self.wait_trigger = self._stored_check("wait_trigger", False, "Czekaj na wyzwolenie",
-                                               "Czekaj na wyzwolenie bez limitu (koniec: Przerwij). Warunek wyzwalania na kanale czeka zawsze.")
+        self.force_dc = self._stored_check("force_dc", True, "Force DC", "Force DC coupling on the channels in use")
+        self.wait_trigger = self._stored_check("wait_trigger", False, "Wait for trigger",
+                                               "Wait for the trigger with no limit (end with Abort). A trigger condition on a channel always waits.")
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.force_dc)
         row.addWidget(self.wait_trigger)
@@ -324,9 +321,7 @@ class ScopeSettings(QtWidgets.QPushButton):
     def _pretrigger_row(self):
         self.pretrigger_on = self._stored_check(
             "pretrigger_on", False, "Pretrigger",
-            "Akwizycja ustawia przesunięcie podstawy czasu na oscyloskopie tak, by ta część pamięci leżała przed wyzwoleniem. "
-            "Odznaczone: zostaje przesunięcie ustawione na oscyloskopie. Czytanie pamięci go nie wysyła. "
-            "Oscyloskop nie schodzi poniżej −5 działek, więc gdy pamięć jest dłuższa niż ekran, duży pretrigger jest nieosiągalny i podaje to log.")
+            "An acquisition sets the time base offset on the scope so that this share of the memory lies before the trigger. Unchecked: the offset set on the scope stays. Reading the memory does not send it. The scope does not go below −5 divisions, so with a memory longer than the screen a large pretrigger cannot be reached and the log says so.")
         self.pretrigger_percent = QtWidgets.QSpinBox()
         self.pretrigger_percent.setRange(0, 100)
         self.pretrigger_percent.setSingleStep(PRETRIGGER_STEP)
@@ -342,10 +337,10 @@ class ScopeSettings(QtWidgets.QPushButton):
         return self.pretrigger_percent.value() if self.pretrigger_on.isChecked() else None
 
     def _trigger_group(self):
-        group = self._group("Wyzwalanie")
+        group = self._group("Trigger")
         layout = QtWidgets.QVBoxLayout(group)
         tabs = QtWidgets.QTabWidget()
-        for position, (page, title) in enumerate(((self._conditions_page(), "Kanały"), (self._advanced_page(), "Zaawansowane"))):
+        for position, (page, title) in enumerate(((self._conditions_page(), "Channels"), (self._advanced_page(), "Advanced"))):
             tabs.addTab(page, "")
             self.owner._bind(lambda text, position=position: tabs.setTabText(position, text), title)
         layout.addWidget(tabs, 1)
@@ -362,16 +357,14 @@ class ScopeSettings(QtWidgets.QPushButton):
         for channel in ANALOG + DIGITAL:
             self.trigger_channel.addItem(channel_name(channel), channel)
         self.trigger_channel.currentIndexChanged.connect(self._show_trigger_form)
-        form.addRow(self.owner._label("Kanał"), self.trigger_channel)
+        form.addRow(self.owner._label("Channel"), self.trigger_channel)
         self.trigger_condition = QtWidgets.QComboBox()
         self.owner._fill_combo(self.trigger_condition, [(label, code) for label, code, _symbol in trigger.CONDITIONS])
         self.trigger_condition.activated.connect(self._condition_picked)
-        form.addRow(self.owner._label("Warunek"), self.trigger_condition)
+        form.addRow(self.owner._label("Condition"), self.trigger_condition)
         note = QtWidgets.QLabel()
         note.setWordWrap(True)
-        self.owner._bind(note.setText, "D0–D15 mają tylko zbocza: polecenie wzorca oscyloskopu przyjmuje poziomy wyłącznie dla CH1–CH4. "
-                                       "Wzorzec na D0–D15 można ustawić, klikając ekran w zakładce Oscyloskop, "
-                                       "a akwizycja bez warunków zostawi go bez zmian.")
+        self.owner._bind(note.setText, "D0–D15 have edges only: the scope's pattern command takes levels for CH1–CH4 alone. A pattern on D0–D15 can be set by clicking the screen in the Oscilloscope tab, and an acquisition with no conditions leaves it as it is.")
         form.addRow(note)
         return page
 
@@ -381,16 +374,14 @@ class ScopeSettings(QtWidgets.QPushButton):
         row = QtWidgets.QFormLayout()
         self.protocol = QtWidgets.QComboBox()
         modes = tuple(mode for mode in trigger.MODES if mode is not trigger.EDGE)
-        self.owner._fill_combo(self.protocol, (("Brak", NO_PROTOCOL), *((mode.label, mode.name) for mode in modes)))
-        row.addRow(self.owner._label("Protokół"), self.protocol)
+        self.owner._fill_combo(self.protocol, (("None", NO_PROTOCOL), *((mode.label, mode.name) for mode in modes)))
+        row.addRow(self.owner._label("Protocol"), self.protocol)
         layout.addLayout(row)
         self.protocol_pages = QtWidgets.QStackedWidget()
         note = QtWidgets.QLabel()
         note.setWordWrap(True)
         note.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
-        self.owner._bind(note.setText, "Wyzwalanie na protokole, na CH1–CH4 i D0–D15. Zastępuje warunki na kanałach, "
-                                       "a akwizycja czeka na nie bez limitu. D0–D15 przełączają się na progu swojej grupy, "
-                                       "ustawianym obok kanałów. I2S, FlexRay i 1553B wymagają opcji oscyloskopu.")
+        self.owner._bind(note.setText, "A trigger on a protocol, on CH1–CH4 and D0–D15. It replaces the conditions on channels, and an acquisition waits for it with no limit. D0–D15 switch at their group's threshold, set next to the channels. I2S, FlexRay and 1553B need options of the scope.")
         self.protocol_pages.addWidget(note)
         for mode in modes:
             form = ProtocolForm(self.owner, mode)
@@ -456,7 +447,7 @@ class ScopeSettings(QtWidgets.QPushButton):
         if code == self.conditions.get(channel, trigger.NONE):
             return
         if code and self.protocol_form():
-            self.message.emit(tr("Uwaga: warunek na kanale zastąpił wyzwalanie na protokole {protocol}.", protocol=self.protocol.currentText()))
+            self.message.emit(tr("Warning: a condition on a channel replaced the trigger on the protocol {protocol}.", protocol=self.protocol.currentText()))
             self.protocol.setCurrentIndex(0)
         dropped = trigger.conflicts(self.conditions, channel, code)
         for other in dropped:
@@ -467,7 +458,7 @@ class ScopeSettings(QtWidgets.QPushButton):
         else:
             self.conditions.pop(channel, None)
         if dropped:
-            self.message.emit(tr("Uwaga: oscyloskop nie łączy tych warunków, więc wyzwalanie na {channels} usunięto.",
+            self.message.emit(tr("Warning: the scope cannot combine these conditions, so the trigger on {channels} was removed.",
                                  channels=", ".join(map(channel_name, sorted(dropped)))))
         self._save_conditions()
         self._save_channels()
@@ -510,7 +501,7 @@ class ScopeSettings(QtWidgets.QPushButton):
         self.settings.setValue("trigger_protocol", self.protocol.currentData())
         self.protocol_pages.setCurrentIndex(position)
         if self.protocol_form() and self.conditions:
-            self.message.emit(tr("Uwaga: wyzwalanie na protokole {protocol} zastąpiło warunki na kanałach {channels}.",
+            self.message.emit(tr("Warning: the trigger on the protocol {protocol} replaced the conditions on the channels {channels}.",
                                  protocol=self.protocol.currentText(), channels=", ".join(map(channel_name, sorted(self.conditions)))))
             self.conditions = {}
             self._save_conditions()
@@ -540,7 +531,7 @@ class ScopeSettings(QtWidgets.QPushButton):
         if self.protocol_form():
             return self.protocol.currentText()
         return (", ".join(f"{channel_name(channel)} {trigger.symbol(code)}" for channel, code in sorted(self.conditions.items()))
-                or tr("bez zmian"))
+                or tr("no change"))
 
     def _refresh(self):
         listened = self.protocol_channels()
@@ -549,18 +540,18 @@ class ScopeSettings(QtWidgets.QPushButton):
             box.setChecked(channel in self.selected())
             box.setEnabled(channel not in self.locked and channel not in self.conditions and channel not in listened)
             if channel in self.conditions:
-                box.setToolTip(tr("Ma warunek wyzwalania, więc zostaje włączony."))
+                box.setToolTip(tr("It has a trigger condition, so it stays on."))
             elif channel in listened:
-                box.setToolTip(tr("Jest źródłem wyzwalania na protokole, więc zostaje włączony."))
+                box.setToolTip(tr("It is a source of the protocol trigger, so it stays on."))
             elif channel in self.locked:
-                box.setToolTip(tr("Używany przez dekoder, więc czytany zawsze."))
+                box.setToolTip(tr("Used by a decoder, so always read."))
             else:
-                box.setToolTip(tr("Akwizycja włącza zaznaczony kanał, a pozostałe wyłącza."))
+                box.setToolTip(tr("Acquisition turns a ticked channel on and the others off."))
             box.blockSignals(False)
         self._show_trigger_form()
-        self.trigger_summary.setText(tr("Wyzwalanie: {trigger}", trigger=self._trigger_text()))
-        self.setToolTip(tr("Stosowane przez Akwizycję. Czytanie pamięci ich nie wysyła. Kanały: {channels}. Wyzwalanie: {trigger}.",
-                           channels=", ".join(map(channel_name, sorted(self.selected()))) or tr("żaden"),
+        self.trigger_summary.setText(tr("Trigger: {trigger}", trigger=self._trigger_text()))
+        self.setToolTip(tr("Applied by Acquisition. Reading the memory does not send them. Channels: {channels}. Trigger: {trigger}.",
+                           channels=", ".join(map(channel_name, sorted(self.selected()))) or tr("none"),
                            trigger=self._trigger_text()))
 
 
@@ -583,14 +574,14 @@ class ChannelDialog(QtWidgets.QDialog):
         if limits is not None:
             layout.addWidget(self._scale_group(limits, manual_limits))
         buttons = QtWidgets.QDialogButtonBox()
-        self.apply_button = buttons.addButton(tr("Zastosuj"), QtWidgets.QDialogButtonBox.AcceptRole)
-        buttons.addButton(tr("Anuluj"), QtWidgets.QDialogButtonBox.RejectRole)
+        self.apply_button = buttons.addButton(tr("Apply"), QtWidgets.QDialogButtonBox.AcceptRole)
+        buttons.addButton(tr("Cancel"), QtWidgets.QDialogButtonBox.RejectRole)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
     def _trigger_group(self, channel, condition):
-        group = QtWidgets.QGroupBox(tr("Wyzwalanie"))
+        group = QtWidgets.QGroupBox(tr("Trigger"))
         row = QtWidgets.QHBoxLayout(group)
         self.trigger_buttons = QtWidgets.QButtonGroup(self)
         self.trigger_codes: dict[str, QtWidgets.QToolButton] = {}
@@ -599,7 +590,7 @@ class ChannelDialog(QtWidgets.QDialog):
             button = QtWidgets.QToolButton()
             button.setText(symbol)
             button.setStyleSheet("QToolButton:checked { background: palette(highlight); color: palette(highlighted-text); }")
-            button.setToolTip(tr(label) if code in allowed else tr("Oscyloskop przyjmuje poziom we wzorcu tylko na CH1–CH4."))
+            button.setToolTip(tr(label) if code in allowed else tr("The scope takes a level in a pattern only on CH1–CH4."))
             button.setCheckable(True)
             button.setEnabled(code in allowed)
             button.setChecked(code == condition)
@@ -610,30 +601,30 @@ class ChannelDialog(QtWidgets.QDialog):
         return group
 
     def _threshold_group(self, threshold, suggested):
-        group = QtWidgets.QGroupBox(tr("Próg"))
-        group.setToolTip(tr("Rozdziela stany w widoku Logika, dla dekoderów z progiem automatycznym i dla wyzwalania."))
+        group = QtWidgets.QGroupBox(tr("Threshold"))
+        group.setToolTip(tr("Separates the states in the Logic view, for decoders with an automatic threshold and for the trigger."))
         form = QtWidgets.QFormLayout(group)
-        self.threshold_auto = QtWidgets.QCheckBox(tr("Automatycznie"))
+        self.threshold_auto = QtWidgets.QCheckBox(tr("Automatic"))
         self.threshold_auto.setChecked(threshold is None)
         form.addRow(self.threshold_auto)
         self.threshold = self._volts(suggested if threshold is None else threshold, THRESHOLD_STEP)
         self.threshold.setEnabled(threshold is not None)
         self.threshold_auto.toggled.connect(self.threshold.setDisabled)
-        form.addRow(tr("Poziom"), self.threshold)
+        form.addRow(tr("Level"), self.threshold)
         return group
 
     def _scale_group(self, limits, manual_limits):
         low, high = limits
-        group = QtWidgets.QGroupBox(tr("Skala"))
+        group = QtWidgets.QGroupBox(tr("Scale"))
         form = QtWidgets.QFormLayout(group)
-        self.scale_auto = QtWidgets.QCheckBox(tr("Automatycznie"))
-        self.scale_auto.setToolTip(tr("Dopasowuje skalę do całego sygnału i trzyma ją do następnego odczytu."))
+        self.scale_auto = QtWidgets.QCheckBox(tr("Automatic"))
+        self.scale_auto.setToolTip(tr("Fits the scale to the whole signal and keeps it until the next read."))
         self.scale_auto.setChecked(not manual_limits)
         form.addRow(self.scale_auto)
         self.high = self._volts(high, (high - low) / SCALE_STEPS)
         self.low = self._volts(low, (high - low) / SCALE_STEPS)
-        form.addRow(tr("Góra"), self.high)
-        form.addRow(tr("Dół"), self.low)
+        form.addRow(tr("Top"), self.high)
+        form.addRow(tr("Bottom"), self.low)
         for box in (self.high, self.low):
             box.setEnabled(manual_limits)
             self.scale_auto.toggled.connect(box.setDisabled)

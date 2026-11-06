@@ -1,242 +1,243 @@
-# MHO900 Dekoder protokołów
+# MHO900 Protocol Decoder
 
-Aplikacja Windows dekodująca protokoły z kanałów analogowych i cyfrowych oscyloskopu Rigol MHO98 (seria MHO900)
-dekoderami projektu libsigrokdecode (sigrok, PulseView) oraz generująca sygnały UART, I2C, SPI, CAN i CAN FD na
-wyjściach AFG dla innych urządzeń. Łączy się po sieci (SCPI na TCP 5555), nie wymaga NI-VISA. Dekoderów może działać
-wiele naraz, jeden pod drugim, a każdy można rozbudować w stos.
+English | [Polski](README.pl.md)
 
-Język interfejsu (polski, angielski) zmienia menu **Język**. Wybór jest zapamiętywany.
+A Windows application that decodes protocols from the analog and digital channels of the Rigol MHO98 oscilloscope (MHO900
+series) with the decoders of the libsigrokdecode project (sigrok, PulseView), and generates UART, I2C, SPI, CAN and CAN FD
+signals on the AFG outputs for other devices. It connects over the network (SCPI on TCP 5555) and does not need NI-VISA.
+Many decoders can run at once, one under another, and each can be extended into a stack.
 
-## Uruchomienie
+The interface is in English by default. The **Language** menu switches it between English and Polish, and the choice is remembered.
 
-Program z kodu źródłowego uruchamia [start.bat](start.bat): aktywuje `.venv` i startuje `main.py`. Można go kliknąć dwukrotnie.
-Jeśli program skończy się błędem, okno konsoli zostaje otwarte z jego treścią.
+## Starting
 
-## Obsługa
+[start.bat](start.bat) runs the program from source: it activates `.venv` and starts `main.py`. It can be double-clicked.
+If the program ends with an error, the console window stays open and shows it.
 
-1. Wpisz adres IP i kliknij **Połącz**.
-2. Przeciągnij dekoder z drzewa i przypisz sygnały do kanałów CH1–CH4 lub D0–D15. Kolejne dekodery dodaje się
-   tak samo, także ten sam dekoder kilka razy na innych kanałach i z innymi ustawieniami.
-3. Kliknij etykietę pasu dekodera albo wybierz **Ustawienia dekodera** z menu prawego klawisza: otworzy się okno, w którym ustawisz kanały
-   i parametry protokołu. Dekodowanie rusza samo po każdej zmianie przebiegu, kanału lub opcji, więc nie ma przycisku dekodowania.
-4. Kliknij **Autoskala**, aby dopasować skalę pionową i poziom wyzwalania.
-5. Na zakładce **Oscyloskop** wybierz głębokość pamięci, podstawę czasu (lista 500 ps/div … 500 s/div
-   w krokach 1-2-5) i wyzwalanie, sprawdzając efekt na podglądzie, a potem kliknij **Run**.
-   Przycisk **Czytaj pamięć** dekoduje to, co jest już w pamięci oscyloskopu, a pole **Powtarzaj** daje akwizycje
-   jedna po drugiej, aż je odznaczysz. Próbki zostają: każda kolejna akwizycja trafia dalej na osi czasu, za przerywaną linią
-   z numerem, a dekodery czytają każdą akwizycję osobno. Inne kanały lub inna częstotliwość próbkowania zaczynają zapis od nowa,
-   a przy około 2 GB próbek Powtarzaj wyłącza się samo. Ręczny **Run** i **Czytaj pamięć** też zaczynają od nowa.
-6. Kliknięcie wiersza tabeli przybliża wykres do tego elementu. Kółko myszy i przeciąganie
-   zmieniają zakres wykresu.
+## Use
 
-Przycisk **Przerwij** pojawia się w miejscu **Run**, gdy coś trwa, i kończy bieżącą operację: odczyt pamięci, oczekiwanie na wyzwolenie,
-autoskalę, ładowanie generatora albo dekodowanie. Opcja **Czekaj na wyzwolenie**
-wyłącza wymuszanie akwizycji po 1 s, więc czeka na sygnał, aż go przerwiesz.
+1. Enter the IP address and click **Connect**.
+2. Drag a decoder from the tree and assign its signals to channels CH1–CH4 or D0–D15. Further decoders are added the same
+   way, including the same decoder several times on other channels with other settings.
+3. Click the label of a decoder lane or choose **Decoder settings** from the right-click menu: a window opens where you set
+   the channels and the protocol parameters. Decoding starts by itself after every change of a waveform, channel or option,
+   so there is no decode button.
+4. Click **Autoscale** to fit the vertical scale and the trigger level.
+5. On the **Oscilloscope** tab choose the memory depth, the time base (a list from 500 ps/div to 500 s/div in 1-2-5 steps)
+   and the trigger, watching the effect in the live view, then click **Run**.
+   The **Read memory** button decodes what is already in the scope's memory, and the **Repeat** box runs acquisitions one
+   after another until you untick it. The samples stay: each further acquisition goes further along the time axis, behind a
+   dashed numbered line, and decoders read each acquisition on its own. Other channels or another sample rate start the
+   record anew, and at about 2 GB of samples Repeat turns itself off. A manual **Run** and **Read memory** start anew as well.
+6. Clicking a row of the table zooms the plot to that item. The mouse wheel and dragging change the range of the plot.
 
-Wyzwalanie na protokołach (UART, I2C, SPI, CAN, LIN, I2S, FlexRay, 1553B) ustawia się na zakładce **Oscyloskop**:
-warunek, adres, ID i dane. Pola danych przyjmują wartości szesnastkowe, a dane I2S i 1553B ciąg bitów 0, 1 i X (w I2S co najwyżej **Bity użyte**). Najstarszy
-bit wpisuje się pierwszy. Pola bitowe są tylko wysyłane, więc zmiana na samym oscyloskopie ich nie zaktualizuje. Zadziałanie
-wyzwalania sprawdzono na sygnale dla UART, I2C, CAN i SPI. Dla LIN, I2S, FlexRay i 1553B sprawdzono tylko, że przyrząd
-przyjmuje i oddaje ustawienia. Źródłem SPI, I2S, FlexRay i 1553B nie może być D15, gdy kanały cyfrowe są wyłączone.
+The **Abort** button appears in place of **Run** while something is in progress, and ends the current operation: a memory
+read, waiting for a trigger, Autoscale, loading the generator or decoding. The **Wait for trigger** option turns off forcing
+the acquisition after 1 s, so it waits for a signal until you abort it.
 
-W czasie trwającej operacji podgląd na zakładce **Oscyloskop** czeka na jej koniec.
+Triggers on protocols (UART, I2C, SPI, CAN, LIN, I2S, FlexRay, 1553B) are set on the **Oscilloscope** tab: condition, address,
+ID and data. Data fields take hexadecimal values, and I2S and 1553B data take a string of bits 0, 1 and X (in I2S at most
+**Bits used**). The most significant bit is entered first. Bit fields are only sent, so a change on the scope itself does not
+update them. Triggering was checked on a signal for UART, I2C, CAN and SPI. For LIN, I2S, FlexRay and 1553B it was only checked
+that the instrument accepts and returns the settings. The source of SPI, I2S, FlexRay and 1553B cannot be D15 while the digital
+channels are off.
 
-Opcja **Szczegółowy (verbose)** nad logiem dopisuje znaczniki czasu, każdą komendę SCPI z odpowiedzią,
-rozmiar, czas i prędkość odczytów oraz liczbę zboczy na sygnał.
+While an operation is in progress, the view on the **Oscilloscope** tab waits for it to end.
 
-Wyniki eksportuje przycisk **Eksport wyników CSV**. Przebiegi można zapisać i dekodować
-później bez oscyloskopu (**Zapisz przebiegi**, **Otwórz przebiegi**).
+The **Detailed (verbose)** option above the log adds timestamps, every SCPI command with its reply, the size, time and speed of
+reads, and the number of edges per signal.
 
-Program ostrzega o przesterowaniu kanału i o sprzężeniu innym niż DC.
+The **Export results to CSV** button exports the results. Waveforms can be saved and decoded later without the scope
+(**Save waveforms**, **Open waveforms**).
 
-Pusty kanał nie daje fałszywych zboczy. Sam szum przyrządu zmierzono od 10 mV/dz do 5 V/dz: do 0,11 działki między skrajnymi
-wartościami, więc przy automatycznym progu sygnał poniżej 0,2 działki liczy się jako stały poziom. Słabszy sygnał, na przykład
-3,3 V przy 20 V/dz, wymaga ręcznego progu w ustawieniach dekodera. Plik BIN otwarty z dysku nie ma skali, więc tam obowiązuje
-tylko stała granica 20 mV.
+The program warns about a clipped channel and about coupling other than DC.
 
-## Prędkość odczytu pamięci
+An empty channel does not give false edges. The instrument's own noise was measured from 10 mV/div to 5 V/div: up to 0.11
+division between the extreme values, so with the automatic threshold a signal below 0.2 division counts as a constant level. A
+weaker signal, for example 3.3 V at 20 V/div, needs a manual threshold in the decoder settings. A BIN file opened from disk has
+no scale, so only a fixed limit of 20 mV applies there.
 
-Domyślny format to BYTE w jednym bloku, najszybsza droga wyjścia danych z tego przyrządu.
-Czasy zmierzone dla 10 M punktów:
+## Memory read speed
 
-| Metoda | Czas |
+The default format is BYTE in one block, the fastest way to get data out of this instrument. Times measured for 10 M points:
+
+| Method | Time |
 |---|---|
-| BYTE, jeden blok | 5,5 s |
-| BYTE, paczki po 1 M | 7,9 s |
-| WORD, jeden blok | 11 s |
-| plik na oscyloskopie i FTP | 13 s |
-| ASCII | około 150 s (policzone z próbki 10 k punktów) |
+| BYTE, one block | 5.5 s |
+| BYTE, 1 M chunks | 7.9 s |
+| WORD, one block | 11 s |
+| file on the scope and FTP | 13 s |
+| ASCII | about 150 s (calculated from a 10 k point sample) |
 
-100 M punktów w BYTE trwa około 55 s. BYTE to górny bajt próbki WORD. WORD (na liście **Format odczytu**)
-przydaje się, gdy sygnał zajmuje mały ułamek zakresu. Limitem jest ścieżka SCPI przyrządu, około 1,8 MB/s:
-FTP na tym samym łączu daje 11,8 MB/s, a większy bufor gniazda nic nie zmienia.
+100 M points in BYTE take about 55 s. BYTE is the upper byte of a WORD sample. WORD (on the **Read format** list) is useful
+when a signal takes a small fraction of the range. The limit is the instrument's SCPI path, about 1.8 MB/s: FTP on the same link
+gives 11.8 MB/s, and a larger socket buffer changes nothing.
 
-## Okno programu
+## Program window
 
-Układ jest wzorowany na analizatorach logicznych (PulseView, Saleae Logic, DSView). Panel dekoderów przyjmuje
-rozwiązania PulseView: drzewo z wyszukiwarką i opisem, niezależne dekodery jeden pod drugim, gwiazdkę przy wymaganych
-sygnałach, dokładanie na stos, ukrywanie dekodera i pojedynczych wierszy oraz pas dekodera widoczny od razu po dodaniu.
-Z PulseView nie ma tu edycji nazwy i koloru pasu, przeciągania pasów w inną kolejność, pauzy dekodowania ani menu
-kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym oknie, a nie w dymku.
+The layout follows logic analyzers (PulseView, Saleae Logic, DSView). The decoder panel takes these solutions from PulseView: a
+tree with search and a description, independent decoders one under another, an asterisk at required signals, stacking, hiding
+a decoder and single rows, and a decoder lane visible right after adding it. Not taken from PulseView: editing a lane's name and
+color, dragging lanes into another order, pausing decoding, and the menu for copying and exporting annotations from a lane.
+Settings open in a separate window rather than a popup.
 
-- **Pasek narzędzi u góry:** połączenie, **Ustawienia oscyloskopu**, **Run** (F5), a w jego miejscu w trakcie pracy **Przerwij** (Esc), pole **Powtarzaj**, osobno odczyt pamięci i autoskala,
-  powiększenie, widok **Logika/Analog** i **Kursory**. Ręczne RUN, STOP, SINGLE i FORCE są tylko w zakładce Oscyloskop.
-- **Ustawienia oscyloskopu:** menu na pasku z kanałami CH1–CH4 i D0–D15, głębokością pamięci, podstawą czasu, wyzwalaniem,
-  formatem odczytu, wymuszeniem DC i czekaniem na wyzwolenie. Oscyloskop dostaje je dopiero przy **Akwizycji**: zaznaczone kanały
-  włącza, a niezaznaczone wyłącza. **Czytaj pamięć** niczego z tego nie wysyła, a tylko zatrzymuje oscyloskop i czyta. „Bez zmian”
-  zostawia to, co jest na oscyloskopie, także po zmianie w zakładce Oscyloskop, która działa od razu. Obok kanałów cyfrowych są progi
-  grup D0–D7 i D8–D15: zaznaczony próg akwizycja ustawia na grupie w użyciu, a odznaczony zostaje taki, jak na oscyloskopie.
-- **Pretrigger:** w grupie Akwizycja wybiera się, ile procent pamięci ma leżeć przed wyzwoleniem. Oscyloskop nie ma na to polecenia, więc
-  akwizycja ustawia przesunięcie podstawy czasu (`:TIMebase:MAIN:OFFSet`) wyliczone z głębokości pamięci i częstotliwości próbkowania.
-  Oscyloskop ogranicza to przesunięcie do −5 działek, więc gdy pamięć jest dłuższa niż ekran, duży pretrigger jest nieosiągalny i log podaje, ile wyszło.
-  Odznaczone: przesunięcie zostaje takie, jak na oscyloskopie.
-- **Linia wyzwolenia:** czerwona pionowa linia „Trig” przechodzi przez wszystkie wiersze w chwili wyzwolenia, przy Powtarzaj osobno dla każdej
-  akwizycji. W akwizycji wymuszonej to chwila wymuszenia. Pliki WFM i pliki NPZ bez zapisanej chwili wyzwolenia nie mają tej linii.
-- **Oznaczenie wyzwalania przy kanale:** etykieta wiersza pokazuje obok numeru kanału „Trig” z symbolem warunku albo z nazwą protokołu, którego kanał jest źródłem, np. `CH1 Trig I2C`.
-- **Wyzwalanie w Ustawieniach oscyloskopu:** zakładka **Kanały** to warunki na pojedynczych kanałach. Zakładka **Zaawansowane** to
-  wyzwalanie na protokole (UART, I2C, SPI, CAN, LIN, I2S, FlexRay, 1553B) ze źródłami na CH1–CH4 i D0–D15. Źródło na D0–D15 nie ma
-  własnego poziomu, bo przełącza się na progu swojej grupy. Protokół i warunki na kanałach zastępują się nawzajem, a akwizycja czeka na
-  takie wyzwolenie bez limitu. Ustawienia, które oscyloskop odrzuci, kończą akwizycję błędem. Poziomów we wzorcu na D0–D15 nie da się
-  ustawić przez SCPI: `:TRIGger:PATTern:PATTern` z więcej niż 4 wartościami daje -108, a 4 wartości działają na CH1–CH4 (firmware
-  00.01.00). Taki wzorzec można ustawić, klikając ekran na podglądzie: akwizycja bez warunków zostawia wyzwalanie bez zmian.
-- **Kanały na przebiegach:** każdy zaznaczony kanał ma swój wiersz. Kanał bez danych w pamięci albo bez zmian poziomu pokazuje na
-  wierszu błąd. **Ukryj nieużywane** jednym kliknięciem odznacza takie kanały, oprócz użytych przez dekoder lub wyzwalanie, a kanał
-  zaznaczony z powrotem znów się pokazuje. Otwarcie pliku wybiera kanały z tego pliku.
-- **Kliknięcie etykiety kanału:** okno jak dymek kanału w PulseView, z warunkiem wyzwalania (brak, niski, wysoki, zbocza), progiem
-  i, w widoku Analog, skalą pionową. Na D0–D15 są tylko zbocza, bo wzorzec oscyloskopu przyjmuje wyłącznie CH1–CH4. CH1–CH4 można
-  łączyć we wzorzec z jednym zboczem narastającym lub opadającym, a dowolne zbocze działa tylko samo. Akwizycja z warunkiem czeka na
-  wyzwolenie bez limitu. Próg ustawiony na kanale działa w widoku Logika, w dekoderach z progiem automatycznym i w wyzwalaniu.
-  Bez progu poziom wyzwalania to środek sygnału z ostatniego odczytu, a bez odczytu zostaje poziom z oscyloskopu.
-- **Zakładka Przebiegi:** kółko myszy powiększa, a przeciąganie przesuwa w czasie. Widok **Logika** pokazuje
-  stany po progu, a **Analog** napięcia. Wiersze przebiegów są niskie, a miejsce dostają wiersze dekodera. Skala pionowa
-  w widoku **Analog** jest dopasowywana raz, do całego odczytu, i nie zmienia się przy zmianie skali czasu. Kliknięcie osi
-  napięcia pozwala wpisać górę i dół zakresu albo wrócić do skali automatycznej, a wpisany zakres zostaje też przy kolejnych
-  odczytach. Kursory, jak w PulseView, mają nad osią
-  czasu flagi A i B i strzałkę z czasem i częstotliwością między nimi, a obszar między nimi jest zacieniowany. Przeciąga się
-  linie albo flagi. Położenia A i B podaje pasek stanu. Paski adnotacji mają kolor wiersza dla danych i szary dla pól
-  sterujących protokołu (start, stop, ACK, adres). Tak samo wyróżnia je tabela. Tekst, który nie mieści się na pasku w żadnej
-  postaci, jest pomijany. Kliknięcie paska adnotacji zaznacza jej wiersz w tabeli, a kliknięcie wiersza pokazuje ją na
-  przebiegu.
-- **Zakładka Oscyloskop:** ekran oscyloskopu na żywo, ze strumienia H.264 strony WWW oscyloskopu, w którym lewy przycisk myszy działa
-  jak dotyk. Strumień działa tylko przy widocznej zakładce i zaznaczonym podglądzie. Strona WWW i program wypychają się nawzajem z tego
-  połączenia. Oprócz tego podstawa czasu, głębokość pamięci, tryb akwizycji, kanały
-  CH1–CH4, kanały cyfrowe i wyzwalanie. Każda zmiana idzie do oscyloskopu od razu, a wartości są stale odczytywane,
-  więc widać też zmiany zrobione na samym oscyloskopie. Odrzucone polecenie pojawia się na pasku stanu.
-  Lista V/dz ma kroki 1-2-5 pomnożone przez mnożnik sondy kanału, od 1 mV × mnożnik do 10 V × mnożnik przy wejściu 1 MΩ, a wybór z niej wyłącza
-  dokładne strojenie kanału (`:CHANnel<n>:VERNier OFF`). Wartość spoza kroków ustawioną na oscyloskopie lista pokazuje, dopóki jest ustawiona.
-  Autoskala też ustawia te kroki. Przesunięcie czasu jest pokazywane z przedrostkiem SI i tak można je wpisać (`1,5 ms`, `20 us`).
-  Grupy D0–D7 i D8–D15 same włączają i wyłączają kanały cyfrowe, bez osobnego pola.
-  Głębokość **Auto** pokazuje w nawiasie liczbę punktów dobraną przez oscyloskop. Odczyt z oscyloskopu podaje liczbę punktów także w Auto, więc
-  program rozpoznaje Auto po tym, że sam je ustawił, albo po liczbie punktów, której nie ma żadna stała głębokość. Stała głębokość ustawiona
-  na samym oscyloskopie po wybraniu Auto w programie nadal pokaże się jako Auto.
-  Na tej zakładce panele dekodera są schowane.
-- **Panel boczny:** zakładki **Dekoder** i **Generator**. Dekodery są w drzewie, sortowanym po kategoriach albo protokole
-  nadrzędnym. Przeciągnij dekoder na przebiegi (albo kliknij dwukrotnie). Upuszczony na pas dekodera, do którego pasuje,
-  trafia na jego stos, dekoder wymagający bazy trafia na stos wybranego dekodera, jeśli pasuje, a każdy inny dostaje nowy pas
-  pod poprzednimi. Grupa **Pasuje do stosu** pokazuje, co można dodać do wybranego dekodera.
-- **Menu pasu dekodera:** prawy klawisz na pasie daje **Ustawienia dekodera** i **Usuń dekoder**. Usuwany jest cały dekoder
-  razem ze stosem.
-- **Podpowiedzi:** po najechaniu myszą przycisk lub pole wyboru pokazuje, co robi.
-- **Okno ustawień dekodera:** otwiera je kliknięcie etykiety pasu lub menu prawego klawisza. Ma kanały, opcje, pole pokazania
-  lub ukrycia, przycisk usunięcia, listę **Wiersze** i **Dodaj na stos**. Prędkość UART, CAN, CAN FD i Miller wybiera się z listy typowych
-  wartości, a **Własna…** otwiera pole na dowolną.
-  Na przebiegach najpierw są kanały, a pod nimi pasy kolejnych dekoderów. Etykiety pasów drugiego i kolejnych dekoderów
-  mają jego numer (`#2`).
-- **Wyniki na dole:** wyszukiwarka, filtr wiersza dekodera i **Tylko błędy**.
-- **Menu:** **Plik** (otwieranie i zapis przebiegów, eksport CSV), **Widok** (ekran oscyloskopu, panele,
-  **Motyw** jasny lub ciemny), **Zaawansowane** (okno odbioru i porównania danych, **Log** w osobnym oknie, Ctrl+L, i log szczegółowy).
+- **Toolbar at the top:** connection, **Scope settings**, **Run** (F5), and in its place while working **Abort** (Esc), the
+  **Repeat** box, memory read and Autoscale set apart, zoom, the **Logic/Analog** view and **Cursors**. Manual RUN, STOP, SINGLE
+  and FORCE are only on the Oscilloscope tab.
+- **Scope settings:** a toolbar menu with channels CH1–CH4 and D0–D15, memory depth, time base, trigger, read format, forcing DC
+  and waiting for a trigger. The scope receives them only at an **Acquisition**: it turns ticked channels on and unticked ones
+  off. **Read memory** sends none of this, it only stops the scope and reads. "No change" leaves what is on the scope, also after
+  a change on the Oscilloscope tab, which works at once. Next to the digital channels are the thresholds of groups D0–D7 and
+  D8–D15: an acquisition sets a ticked threshold on a group in use, and an unticked one stays as it is on the scope.
+- **Pretrigger:** in the Acquisition group you choose what percentage of the memory lies before the trigger. The scope has no
+  command for this, so an acquisition sets the time base offset (`:TIMebase:MAIN:OFFSet`) calculated from the memory depth and the
+  sample rate. The scope limits this offset to −5 divisions, so when the memory is longer than the screen a large pretrigger
+  cannot be reached and the log says what came out. Unticked: the offset stays as it is on the scope.
+- **Trigger line:** a red vertical "Trig" line runs through all rows at the moment of the trigger, separately for each acquisition
+  with Repeat. In a forced acquisition it is the moment of forcing. WFM files and NPZ files with no saved trigger moment do not
+  have this line.
+- **Trigger mark on a channel:** next to the channel number, the row label shows "Trig" with the symbol of the condition or the
+  name of the protocol the channel is a source of, for example `CH1 Trig I2C`.
+- **Trigger in Scope settings:** the **Channels** tab holds conditions on single channels. The **Advanced** tab holds the trigger
+  on a protocol (UART, I2C, SPI, CAN, LIN, I2S, FlexRay, 1553B) with sources on CH1–CH4 and D0–D15. A source on D0–D15 has no level
+  of its own, as it switches at the threshold of its group. A protocol and conditions on channels replace each other, and an
+  acquisition waits for such a trigger with no limit. Settings the scope refuses end the acquisition with an error. Levels in a
+  pattern on D0–D15 cannot be set through SCPI: `:TRIGger:PATTern:PATTern` with more than 4 values gives -108, and 4 values act on
+  CH1–CH4 (firmware 00.01.00). Such a pattern can be set by clicking the screen in the live view: an acquisition with no conditions
+  leaves the trigger as it is.
+- **Channels on the waveforms:** each ticked channel has its row. A channel with no data in memory or with no level changes shows
+  an error on its row. **Hide unused** unticks such channels with one click, except those used by a decoder or the trigger, and a
+  channel ticked again shows again. Opening a file selects the channels of that file.
+- **Clicking a channel label:** a window like PulseView's channel popup, with the trigger condition (none, low, high, edges), the
+  threshold and, in the Analog view, the vertical scale. D0–D15 have edges only, as the scope's pattern takes CH1–CH4 alone. CH1–CH4
+  can be combined into a pattern with one rising or falling edge, and either edge works only on its own. An acquisition with a
+  condition waits for the trigger with no limit. A threshold set on a channel works in the Logic view, in decoders with an automatic
+  threshold and in the trigger. With no threshold, the trigger level is the middle of the signal from the last read, and with no read
+  the level on the scope stays.
+- **Waveforms tab:** the mouse wheel zooms and dragging moves along the time axis. The **Logic** view shows states after the threshold,
+  and **Analog** shows voltages. Waveform rows are low, and decoder rows get the room. The vertical scale in the **Analog** view is fitted
+  once, to the whole read, and does not change when the time scale does. Clicking the voltage axis lets you enter the top and bottom of
+  the range or go back to the automatic scale, and an entered range stays for further reads. Cursors, as in PulseView, have flags A
+  and B above the time axis and an arrow with the time and frequency between them, and the area between them is shaded. You drag the
+  lines or the flags. The status bar gives the positions of A and B. Annotation bars have the row's color for data and gray for the
+  control fields of a protocol (start, stop, ACK, address). The table marks them the same way. Text that does not fit on a bar in any
+  form is left out. Clicking an annotation bar selects its row in the table, and clicking a row shows it on the waveform.
+- **Oscilloscope tab:** the scope's screen live, from the H.264 stream of the scope's web page, where the left mouse button acts like
+  touch. The stream runs only while the tab is visible and the live view is ticked. The web page and this program push each other off
+  this connection. Besides this: time base, memory depth, acquisition mode, channels CH1–CH4, digital channels and the trigger. Every
+  change goes to the scope at once, and values are read continuously, so changes made on the scope itself show as well. A refused
+  command appears on the status bar.
+  The V/div list has 1-2-5 steps times the channel's probe ratio, from 1 mV × ratio to 10 V × ratio at the 1 MΩ input, and choosing from
+  it turns off the channel's fine adjustment (`:CHANnel<n>:VERNier OFF`). The list shows a value between the steps set on the scope for
+  as long as it is set. Autoscale sets these steps too. The time offset is shown with an SI prefix and can be entered that way (`1.5 ms`,
+  `20 us`). Groups D0–D7 and D8–D15 turn the digital channels on and off themselves, with no separate box.
+  The **Auto** depth shows in brackets the number of points the scope chose. The scope's reply gives a number of points in Auto too, so
+  the program recognizes Auto by having set it itself, or by a number of points no fixed depth has. A fixed depth set on the scope
+  itself after choosing Auto in the program still shows as Auto.
+  The decoder panels are hidden on this tab.
+- **Side panel:** the **Decoder** and **Generator** tabs. Decoders are in a tree, sorted by category or parent protocol. Drag a decoder
+  onto the waveforms (or double-click it). Dropped on a decoder lane it fits, it goes onto that lane's stack, a decoder that needs a
+  base goes onto the stack of the selected decoder if it fits, and any other gets a new lane under the previous ones. The **Fits the
+  stack** group shows what can be added to the selected decoder.
+- **Decoder lane menu:** the right mouse button on a lane gives **Decoder settings** and **Delete decoder**. The whole decoder is
+  deleted, together with its stack.
+- **Tooltips:** hovering over a button or a selection box shows what it does.
+- **Decoder settings window:** opened by clicking the lane label or from the right-click menu. It has channels, options, a box to show
+  or hide, a delete button, the **Rows** list and **Stack a decoder**. The rate of UART, CAN, CAN FD and Miller is chosen from a list of
+  typical values, and **Custom…** opens a field for any other.
+  The waveforms show channels first, with the lanes of further decoders under them. The lane labels of the second and later decoders
+  have its number (`#2`).
+- **Results at the bottom:** search, a filter by decoder row, and **Errors only**.
+- **Menu:** **File** (opening and saving waveforms, CSV export), **View** (scope screen, panels, light or dark **Theme**), **Advanced**
+  (the window for receiving and comparing data, the **Log** in a separate window, Ctrl+L, and the detailed log).
 
-Ostatni komunikat widać na pasku stanu, a błąd jest tam czerwony. Kliknięcie otwiera log.
+The last message shows on the status bar, in red if it is an error. Clicking it opens the log.
 
-## Kanały cyfrowe D0–D15
+## Digital channels D0–D15
 
-Sygnał dekodera można przypisać do kanału cyfrowego (wymaga sondy logicznej). Program czyta je przez plik BIN zapisany
-na oscyloskopie i pobrany przez FTP, bo `:WAVeform:SOURce` nie przyjmuje D0–D15. Zapis i pobranie trwają około 7 s
-przy 1 M punktów i 23 s przy 10 M punktów (dwa kanały analogowe i cyfrowe).
+A decoder signal can be assigned to a digital channel (this needs the logic probe). The program reads them through a BIN file saved on
+the scope and downloaded over FTP, as `:WAVeform:SOURce` does not take D0–D15. Saving and downloading take about 7 s at 1 M points and
+23 s at 10 M points (two analog channels and digital).
 
-- **Próg:** domyślny próg to 0 V, a logika 0–3,3 V wymaga około 1,65 V. Ustawia się go na zakładce Oscyloskop.
-- **Gęstość próbek:** kanały cyfrowe mają 1/4 próbek kanału analogowego przy jednym kanale, 1/2 przy dwóch i tyle samo
-  przy czterech. Program czyta ten stosunek z pliku.
-- **Łączenie z analogowymi:** kanały cyfrowe są opóźnione względem analogowych o kilka próbek (zmierzono na przykład
-  8 próbek przy 50 MSa/s i 39 przy 1 GSa/s). Opóźnienie nie jest stałe w czasie, więc program go nie koryguje,
-  a przy łączeniu kanałów w jednym dekoderze ostrzega w logu.
+- **Threshold:** the default threshold is 0 V, and 0–3.3 V logic needs about 1.65 V. It is set on the Oscilloscope tab.
+- **Sample density:** digital channels have 1/4 of the samples of an analog channel with one channel on, 1/2 with two, and the same
+  number with four. The program reads this ratio from the file.
+- **Combining with analog:** digital channels are delayed against analog ones by a few samples (measured for example 8 samples at
+  50 MSa/s and 39 at 1 GSa/s). The delay is not constant over time, so the program does not correct it, and it warns in the log when a
+  decoder combines both kinds of channel.
 
-## Pliki oscyloskopu
+## Scope files
 
-**Plik → Otwórz przebiegi** czyta też pliki `.bin` i `.wfm` z oscyloskopu.
+**File → Open waveforms** also reads `.bin` and `.wfm` files from the scope.
 
-- **BIN:** napięcia jako 32-bitowe liczby zmiennoprzecinkowe i kanały cyfrowe. Pola rozmiaru w nagłówku są zawyżone,
-  ale dane są kompletne: kolumny D0–D15 są identyczne z plikiem CSV.
-- **WFM:** tylko próbki analogowe 16-bitowe, bez kanałów cyfrowych i bez częstotliwości próbkowania, którą trzeba podać.
-  Napięcia CH1 i CH2 zgadzają się z BIN do 0,1 µV. Czas liczony jest od środka zapisu, więc przesunięcie czasu
-  nie jest uwzględnione. CH3 i CH4 nie były sprawdzone na sygnale.
+- **BIN:** voltages as 32-bit floating-point numbers, and digital channels. The size fields in the header are too large, but the data
+  is complete: columns D0–D15 are identical to the CSV file.
+- **WFM:** 16-bit analog samples only, with no digital channels and no sample rate, which has to be given. Voltages of CH1 and CH2 agree
+  with BIN to 0.1 µV. Time counts from the middle of the record, so the time offset is not taken into account. CH3 and CH4 were not
+  checked on a signal.
 
-## Dekodery sigrok
+## Sigrok decoders
 
-Wszystkie dekodery programu pochodzą z sigrok. Wyszukiwarka nad drzewem filtruje je po nazwie i opisie, a lista **Sortuj**
-układa je według kategorii albo protokołu nadrzędnego: dekoder wymagający innego, na przykład `i2cdemux`, leży wtedy
-pod nim (I²C).
+All decoders of the program come from sigrok. The search above the tree filters them by name and description, and the **Sort** list
+arranges them by category or parent protocol: a decoder that needs another, for example `i2cdemux`, then lies under it (I²C).
 
-Niezmienione dekodery leżą w `mhodecode/srd_decoders` (130 używanych, wersja z repozytorium z 1.10.2024).
-Plik `mhodecode/sigrokdecode.py` zastępuje rdzeń napisany w C, więc dekodery nie wymagają instalacji sigrok.
+The unchanged decoders are in `mhodecode/srd_decoders` (130 in use, the version from the repository of 2024-10-01).
+The file `mhodecode/sigrokdecode.py` replaces the core written in C, so the decoders do not need sigrok to be installed.
 
-**Pas dekodera.** Dodany dekoder ma pas na osi czasu od razu, także bez danych. Wiersze pojawiają się, gdy mają adnotacje,
-a do tego czasu pas jest pusty, z nazwą dekodera i ewentualnym brakiem (na przykład kanału) wypisanym na nim.
+**Decoder lane.** An added decoder has a lane on the time axis at once, also with no data. Rows appear when they have annotations, and
+until then the lane is empty, with the decoder's name and anything missing (for example a channel) written on it.
 
-**Stos.** Dekoder wyższego poziomu czyta wynik dekodera pod nim, tak jak w PulseView. **Dodaj na stos** na karcie
-pokazuje tylko te, które pasują do wyjścia ostatniego dekodera. Dodanie dekodera wymagającego bazy bez pasującej karty
-samo buduje najkrótszy stos, na przykład `i2c → eeprom24xx`. Usunięcie dekodera ze stosu usuwa też dekodery nad nim.
-Każda karta ma własny stos, kanały i ustawienia.
+**Stack.** A higher-level decoder reads the result of the decoder under it, as in PulseView. **Stack a decoder** on the card shows only
+those that fit the output of the last decoder. Adding a decoder that needs a base with no fitting card builds the shortest stack by
+itself, for example `i2c → eeprom24xx`. Removing a decoder from a stack also removes the decoders above it. Each card has its own stack,
+channels and settings.
 
-Każdy wiersz adnotacji ma własny pas na wykresie. Lista **Wiersz** nad tabelą pokazuje jeden wiersz, a domyślnie
-wszystkie poza bitami. Porównanie (menu **Zaawansowane**) szuka kopii w wynikach wszystkich dekoderów naraz. Działa
-dla dekoderów, które podają dane binarne (między innymi UART, I2C, SPI). Z CAN program czyta bajty danych z tekstu
-adnotacji, bo ten dekoder danych binarnych nie podaje.
+Each annotation row has its own lane on the plot. The **Row** list above the table shows one row, and by default all except bits.
+Comparing (the **Advanced** menu) looks for a copy in the results of all decoders at once. It works for decoders that give binary data
+(among others UART, I2C, SPI). From CAN the program reads data bytes from the annotation text, as this decoder gives no binary data.
 
-Ograniczenia:
+Limits:
 
-- Przyrząd ma 4 kanały analogowe. Dekodery wymagające więcej nie dadzą sensownego wyniku: `aud`, `lpc`, `mcs48`,
+- The instrument has 4 analog channels. Decoders that need more do not give a meaningful result: `aud`, `lpc`, `mcs48`,
   `seven_segment`, `z80`.
-- `ir_irmp` nie jest dostępny, bo wymaga natywnej biblioteki libirmp.
-- SPI bez linii CS liczy bity od pierwszego zbocza zapisu i się nie synchronizuje, więc zapis zaczęty w środku słowa daje
-  przesunięte dane.
-- Dekodery nie wykrywają prędkości same, więc trzeba ją wpisać (pomaga dekoder `guess_bitrate`). Teksty podają po angielsku.
-- CAN czyta jedną linię, w której stan dominujący jest niski. Z pary różnicowej przypisz więc CAN_L, bo pary jako takiej
-  nie obsługuje. Program nie ostrzega już o zbyt małej liczbie próbek na bit.
-- Prefiks `0x` i cudzysłowy pokazują UART (według opcji **Data format**: hex i ascii), I2C, SPI i I2S, a CAN ma `0x` z dekodera.
-  Pozostałe dekodery podają teksty bez zmian. O tym, co jest danymi, a co polem sterującym, program wnioskuje z nazw klas
-  adnotacji. Dekoder bez klasy danych nie jest dzielony i ma tylko kolor wiersza.
-- Poziom początkowy sygnału (Initial pin w PulseView) jest obsłużony w rdzeniu, ale okno go nie ustawia.
+- `ir_irmp` is not available, as it needs the native libirmp library.
+- SPI with no CS line counts bits from the first edge of the record and does not synchronize, so a record started in the middle of a word
+  gives shifted data.
+- Decoders do not detect the rate by themselves, so it has to be entered (the `guess_bitrate` decoder helps). Their texts are in English.
+- CAN reads one line where the dominant state is low. From a differential pair assign CAN_L, as the pair as such is not supported. The
+  program no longer warns about too few samples per bit.
+- The `0x` prefix and quotes are shown by UART (according to its **Data format** option: hex and ascii), I2C, SPI and I2S, and CAN has `0x`
+  from the decoder. Other decoders give their texts unchanged. The program infers what is data and what is a control field from the names
+  of annotation classes. A decoder with no data class is not split and has only the row's color.
+- The initial level of a signal (Initial pin in PulseView) is handled in the core, but the window does not set it.
 
-## Generator dla innych urządzeń
+## Generator for other devices
 
-Zakładka **Generator** wysyła sygnał, a odbiór i porównanie są w menu **Zaawansowane**, w oknie **Odbiór i porównanie danych**.
+The **Generator** tab sends a signal, and receiving and comparing are in the **Advanced** menu, in the **Receiving and comparing data** window.
 
-1. **Generuj** wysyła dane na wyjścia AFG i zostawia je włączone. Dane podajesz jako hex (`0x48 0x65` albo `48 65`) albo ASCII
-   (`"Hello"` albo `Hello`, także `\n \r \t \0 \\ \xNN`). Tekst w cudzysłowach traci je przy wysyłaniu, więc same
-   cudzysłowy jako dane zapisz podwójnie (`""a""`). Każdej linii protokołu przypisujesz wyjście AFG1 lub AFG2 albo ją pomijasz.
-   Dla każdego wyjścia ustawiasz poziom niski i wysoki oraz obciążenie (High-Z lub 50 Ω). Poziomy trafiają
-   na wyjście, zanim się włączy, więc urządzenie nie zobaczy amplitudy z wcześniejszego użycia.
-2. **Odbierz** wykonuje akwizycję z kanałami i dekoderem z zakładki **Dekoder** i ustawieniami z zakładki **Oscyloskop**.
-   Przycisk **Ustaw dekoder i podstawę czasu wg generatora** kopiuje parametry protokołu, dobiera
-   podstawę czasu oraz przypisuje kanał o numerze wyjścia (AFG1 na CH1). Sprawdź to, jeśli urządzenie
-   odpowiada na innych kanałach.
-3. **Porównaj** szuka w zdekodowanych danych kompletnej kopii bez błędów: danych wysłanych albo wpisanych
-   jako oczekiwane. Przy niezgodności podaje pierwszy różniący się bajt. Porównanie działa dla każdego
-   dekodera podającego dane binarne i dla CAN, także gdy urządzenie odpowiada innym protokołem.
+1. **Generate** sends the data to the AFG outputs and leaves them on. You give the data as hex (`0x48 0x65` or `48 65`) or ASCII (`"Hello"`
+   or `Hello`, also `\n \r \t \0 \\ \xNN`). Quoted text loses the quotes when sent, so write quotes as data double (`""a""`). You assign each
+   protocol line to output AFG1 or AFG2 or skip it. For each output you set the low and high level and the load (High-Z or 50 Ω). The levels
+   reach the output before it turns on, so a device does not see the amplitude from an earlier use.
+2. **Receive** runs an acquisition with the channels and decoder from the **Decoder** tab and the settings from the **Oscilloscope** tab.
+   The **Set the decoder and time base from the generator** button copies the protocol parameters, picks a time base and assigns the channel
+   with the output's number (AFG1 to CH1). Check this if the device replies on other channels.
+3. **Compare** looks in the decoded data for a complete copy with no errors: of the sent data or of what was entered as expected. On a mismatch
+   it gives the first byte that differs. Comparing works for every decoder that gives binary data and for CAN, also when a device replies with
+   another protocol.
 
-Generator obsługuje UART, I2C, SPI, CAN i CAN FD. I2S wymaga 3 linii, a przyrząd ma 2 wyjścia.
+The generator handles UART, I2C, SPI, CAN and CAN FD. I2S needs 3 lines, and the instrument has 2 outputs.
 
-Ograniczenia wyjść AFG:
+Limits of the AFG outputs:
 
-- Rekord ma 16384 próbki i gra w pętli, bo przewodnik programisty nie opisuje trybu burst. Komunikat powtarza się,
-  dopóki wyjście jest włączone. Program sam obniża liczbę próbek na bit (16, 8, 4), by dane się zmieściły.
-- Najwyższa użyta częstotliwość próbkowania rekordu to 80 MSa/s, sprawdzona na oscyloskopie.
-- Dłuższe dane CAN idą w kolejnych ramkach po 8 bajtów, a CAN FD po 64 bajty. Ostatnia ramka CAN FD musi mieć
-  dozwoloną długość (0–8, 12, 16, 20, 24, 32, 48, 64).
-- Program zapisuje pliki `mhodecode_afg1.csv` i `mhodecode_afg2.csv` w folderze `C:/arb` oscyloskopu (anonimowe FTP).
+- A record has 16384 samples and plays in a loop, as the programming guide does not describe a burst mode. The message repeats while the
+  output is on. The program lowers the samples per bit by itself (16, 8, 4) so that the data fits.
+- The highest sample rate of a record used is 80 MSa/s, checked on the scope.
+- Longer CAN data goes in further frames of 8 bytes, and CAN FD of 64 bytes. The last CAN FD frame must have an allowed length (0–8, 12, 16,
+  20, 24, 32, 48, 64).
+- The program writes the files `mhodecode_afg1.csv` and `mhodecode_afg2.csv` in the scope's `C:/arb` folder (anonymous FTP).
 
-## Rozwój
+## Development
 
 ```powershell
 .\build.ps1
@@ -246,7 +247,7 @@ Ograniczenia wyjść AFG:
 .venv\Scripts\python.exe -m pytest tests -q
 ```
 
-Poniższe testy wymagają połączenia AFG1 z CH1 i AFG2 z CH2:
+The tests below need AFG1 connected to CH1 and AFG2 to CH2:
 
 ```powershell
 .venv\Scripts\python.exe tests\live_scope.py 192.0.2.1
@@ -260,25 +261,30 @@ Poniższe testy wymagają połączenia AFG1 z CH1 i AFG2 z CH2:
 .venv\Scripts\python.exe tests\live_sigrok.py 192.0.2.1
 ```
 
-Zgodność z prawdziwym libsigrokdecode sprawdza się na jego przypadkach testowych, po sklonowaniu repozytoriów
-[sigrok-test](https://github.com/sigrokproject/sigrok-test) i [sigrok-dumps](https://github.com/sigrokproject/sigrok-dumps):
+Agreement with the real libsigrokdecode is checked on its test cases, after cloning the repositories
+[sigrok-test](https://github.com/sigrokproject/sigrok-test) and [sigrok-dumps](https://github.com/sigrokproject/sigrok-dumps):
 
 ```powershell
-.venv\Scripts\python.exe tests\sigrok_conformance.py ŚCIEŻKA\sigrok-test ŚCIEŻKA\sigrok-dumps
+.venv\Scripts\python.exe tests\sigrok_conformance.py PATH\sigrok-test PATH\sigrok-dumps
 ```
 
-Wynik: 574 z 594 przypadków. Pozostałe to `ir_irmp` (16, brak libirmp) i `avr_isp` (4). W `avr_isp` różnica dotyczy
-tylko nazw układów z tabeli `parts.py`, które pliki wzorcowe pomijają.
+Result: 574 of 594 cases. The others are `ir_irmp` (16, no libirmp) and `avr_isp` (4). In `avr_isp` the difference concerns only the part
+names from the `parts.py` table, which the reference files leave out.
 
-`main.py --selftest ADRES --output FOLDER` przechodzi przez okno programu wszystkie funkcje,
-zapisuje log i zrzuty ekranu oraz kończy się kodem 0 tylko wtedy, gdy wszystkie zadziałały.
+`main.py --selftest ADDRESS --output FOLDER` goes through all functions in the program's window, saves a log and screenshots, and ends with
+code 0 only when all of them worked.
 
-## Licencja
+## Translations
 
-Dekodery w `mhodecode/srd_decoders` pochodzą z projektu [libsigrokdecode](https://github.com/sigrokproject/libsigrokdecode)
-i mają licencje GPLv2+, GPLv3+, BSD i MIT (pole `license` każdego dekodera, tekst GPLv3 w `COPYING`, autorzy
-w `AUTHORS`). `mhodecode/sigrokdecode.py` odwzorowuje działanie ich rdzenia. Program rozprowadzany razem z nimi,
-także jako exe, podlega licencji GNU GPL w wersji 3 lub nowszej, a odbiorca musi mieć dostęp do kodu źródłowego.
+The source strings in the code are in English. Polish is the catalogue `mhodecode/i18n_pl.py` (English source string -> Polish); a test
+fails if a visible text has no entry there.
 
-Układ panelu dekoderów jest wzorowany na programie [PulseView](https://github.com/sigrokproject/pulseview) (GPLv3).
-Kod PulseView, napisany w C++, nie jest częścią tego programu.
+## License
+
+The decoders in `mhodecode/srd_decoders` come from the [libsigrokdecode](https://github.com/sigrokproject/libsigrokdecode) project and have the
+licenses GPLv2+, GPLv3+, BSD and MIT (the `license` field of each decoder, the GPLv3 text in `COPYING`, the authors in `AUTHORS`).
+`mhodecode/sigrokdecode.py` reproduces the behavior of their core. The program distributed together with them, also as an exe, is subject to the
+GNU GPL version 3 or later, and a recipient must have access to the source code.
+
+The layout of the decoder panel follows the [PulseView](https://github.com/sigrokproject/pulseview) program (GPLv3). The PulseView code, written in
+C++, is not part of this program.

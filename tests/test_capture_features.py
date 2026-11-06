@@ -310,7 +310,7 @@ def test_a_capture_that_does_not_fit_starts_anew_with_a_note(window, app):
     run_job(window, app)
     finish(window, app)
     assert window.capture_starts == [] and window.waves[1].dt == square_wave(1).dt
-    assert "od nowa" in window.log.toPlainText()
+    assert "starts anew" in window.log.toPlainText()
     window.scope = None
 
 
