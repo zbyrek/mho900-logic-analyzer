@@ -140,7 +140,7 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   Lista V/dz ma kroki 1-2-5 pomnożone przez mnożnik sondy kanału, od 1 mV × mnożnik do 10 V × mnożnik przy wejściu 1 MΩ, a wybór z niej wyłącza
   dokładne strojenie kanału (`:CHANnel<n>:VERNier OFF`). Wartość spoza kroków ustawioną na oscyloskopie lista pokazuje, dopóki jest ustawiona.
   Przesunięcie czasu jest pokazywane z przedrostkiem SI i tak można je wpisać (`1,5 ms`, `20 us`).
-  Grupy D0–D7 i D8–D15 same włączają i wyłączają kanały cyfrowe, bez osobnego pola.
+  Grupy D0–D7 i D8–D15 same włączają i wyłączają kanały cyfrowe, bez osobnego pola. Pod nimi można zaznaczać pojedynczo D0–D15, a każda zmiana działa na oscyloskopie od razu.
   Głębokość **Auto** pokazuje w nawiasie liczbę punktów dobraną przez oscyloskop. Odczyt z oscyloskopu podaje liczbę punktów także w Auto, więc
   program rozpoznaje Auto po tym, że sam je ustawił, albo po liczbie punktów, której nie ma żadna stała głębokość. Stała głębokość ustawiona
   na samym oscyloskopie po wybraniu Auto w programie nadal pokaże się jako Auto.
@@ -172,8 +172,9 @@ przy 1 M punktów i 23 s przy 10 M punktów (dwa kanały analogowe i cyfrowe).
 - **Próg:** domyślny próg to 0 V, a logika 0–3,3 V wymaga około 1,65 V. Ustawia się go na zakładce Oscyloskop.
 - **Gęstość próbek:** kanały cyfrowe mają 1/4 próbek kanału analogowego przy jednym kanale, 1/2 przy dwóch i tyle samo
   przy czterech. Program czyta ten stosunek z pliku.
-- **Łączenie z analogowymi:** kanały cyfrowe są opóźnione względem analogowych o kilka próbek (zmierzono na przykład
-  8 próbek przy 50 MSa/s i 39 przy 1 GSa/s). Opóźnienie nie jest stałe w czasie, więc program go nie koryguje,
+- **Łączenie z analogowymi:** zmierzono opóźnienie kanałów cyfrowych względem analogowych: 900 ns przy 10 MSa/s, 160 ns przy 50 MSa/s,
+  39 ns przy 1 GSa/s i 19,5 ns przy 2 GSa/s, na jednym zestawie przewodów, których długości nie porównano. Przyczyny nie ustalono.
+  Przewody mogą dodać stały czas, ale same nie tłumaczą opóźnienia zmieniającego się z częstotliwością próbkowania. Program go nie koryguje,
   a przy łączeniu kanałów w jednym dekoderze ostrzega w logu.
 
 ## Pliki oscyloskopu
