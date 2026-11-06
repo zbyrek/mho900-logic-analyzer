@@ -49,6 +49,28 @@ class CursorView:
     font: QtGui.QFont
 
 
+@dataclass(frozen=True)
+class LineMark:
+    """The name of a vertical line. It sits on the strip above the time axis, in scene coordinates."""
+    position: float
+    text: str
+    pen: QtGui.QPen
+    text_color: str
+    fill: str | None  # the flag's background, or None for plain text
+    leading: bool  # the text goes before the line: Trig follows its acquisition's start, so they keep apart
+
+
+@dataclass(frozen=True)
+class MarkView:
+    marks: tuple[LineMark, ...]
+    left: float  # the part of the view that holds the traces
+    right: float
+    strip_top: float
+    strip_bottom: float
+    view_top: float
+    font: QtGui.QFont
+
+
 class CursorStrip(pg.GraphicsWidget):
     """The strip above the time axis. It only takes the mouse: the flags on it can be dragged."""
 
@@ -71,7 +93,7 @@ class CursorStrip(pg.GraphicsWidget):
 class CursorOverlay(QtWidgets.QGraphicsObject):
     """Paints over all rows and takes no mouse events, so the lines and bars under it stay usable."""
 
-    def __init__(self, describe: Callable[[], CursorView | None]):
+    def __init__(self, describe: Callable[[], CursorView | MarkView | None]):
         super().__init__()
         self.describe = describe
         self.area = QtCore.QRectF()
@@ -158,3 +180,33 @@ class CursorOverlay(QtWidgets.QGraphicsObject):
         painter.drawRoundedRect(rect, 3, 3)
         painter.setPen(QtGui.QColor(view.flag_text))
         painter.drawText(rect, QtCore.Qt.AlignCenter, letter)
+
+
+class MarkOverlay(CursorOverlay):
+    """The names of the trigger and acquisition lines. A line's stem crosses the time axis to reach the traces."""
+
+    def paint(self, painter, _option, _widget=None):
+        view = self.describe()
+        if view is None:
+            return
+        painter.setFont(view.font)
+        metrics = QtGui.QFontMetricsF(view.font)
+        taken = []
+        for mark in view.marks:
+            if not view.left <= mark.position <= view.right:
+                continue
+            painter.setPen(mark.pen)
+            painter.drawLine(QtCore.QPointF(mark.position, view.strip_top), QtCore.QPointF(mark.position, view.view_top))
+            width = metrics.horizontalAdvance(mark.text) + 2 * FLAG_MARGIN
+            before, after = mark.position - width, mark.position
+            left = before if mark.leading else after
+            if left < view.left or left + width > view.right:  # no room on its usual side
+                left = after if mark.leading else before
+            flag = QtCore.QRectF(left, view.strip_top, width, view.strip_bottom - view.strip_top)
+            if any(flag.intersects(other) for other in taken):  # zoomed out: the earlier mark keeps its name readable
+                continue
+            taken.append(flag)
+            if mark.fill:
+                painter.fillRect(flag, QtGui.QColor(mark.fill))
+            painter.setPen(QtGui.QColor(mark.text_color))
+            painter.drawText(flag, QtCore.Qt.AlignCenter, mark.text)

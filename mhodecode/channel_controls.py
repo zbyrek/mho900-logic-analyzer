@@ -215,7 +215,7 @@ class ScopeSettings(QtWidgets.QPushButton):
         layout.addLayout(self._pod_thresholds())
         self.hide_unused = QtWidgets.QPushButton()
         self.owner._bind(self.hide_unused.setText, "Hide unused")
-        self.owner._bind(self.hide_unused.setToolTip, "Unticks the channels without data in the last read. A channel ticked again shows again.")
+        self.owner._bind(self.hide_unused.setToolTip, "Unticks the channels with no data or no level changes in the last read. A channel ticked again shows again.")
         self.hide_unused.clicked.connect(self.hide_requested)
         layout.addWidget(self.hide_unused)
         return group

@@ -101,8 +101,9 @@ kopiowania i eksportu adnotacji z pasu. Ustawienia otwierają się w osobnym okn
   takie wyzwolenie bez limitu. Ustawienia, które oscyloskop odrzuci, kończą akwizycję błędem. Poziomów we wzorcu na D0–D15 nie da się
   ustawić przez SCPI: `:TRIGger:PATTern:PATTern` z więcej niż 4 wartościami daje -108, a 4 wartości działają na CH1–CH4 (firmware
   00.01.00). Taki wzorzec można ustawić, klikając ekran na podglądzie: akwizycja bez warunków zostawia wyzwalanie bez zmian.
-- **Kanały na przebiegach:** każdy zaznaczony kanał ma swój wiersz. Kanał bez danych w pamięci albo bez zmian poziomu pokazuje na
-  wierszu błąd. **Ukryj nieużywane** jednym kliknięciem odznacza takie kanały, oprócz użytych przez dekoder lub wyzwalanie, a kanał
+- **Kanały na przebiegach:** każdy zaznaczony kanał ma swój wiersz. Kanał bez zmian poziomu rysuje swój stały poziom: napięcie
+  w widoku Analog, niski albo wysoki w widoku Logika. Kanał, o który prosi odczyt, a którego nie ma w pamięci oscyloskopu, pokazuje na
+  wierszu błąd. **Ukryj nieużywane** jednym kliknięciem odznacza oba rodzaje, oprócz użytych przez dekoder lub wyzwalanie, a kanał
   zaznaczony z powrotem znów się pokazuje. Otwarcie pliku wybiera kanały z tego pliku.
 - **Kliknięcie etykiety kanału:** okno jak dymek kanału w PulseView, z warunkiem wyzwalania (brak, niski, wysoki, zbocza), progiem
   i, w widoku Analog, skalą pionową. Na D0–D15 są tylko zbocza, bo wzorzec oscyloskopu przyjmuje wyłącznie CH1–CH4. CH1–CH4 można

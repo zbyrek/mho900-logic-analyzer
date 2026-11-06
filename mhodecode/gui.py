@@ -19,7 +19,7 @@ from .decoders import DECODERS, SIGROK, SIGROK_ROOTS
 from .decoders.base import DecodeResult
 from .i18n import LANGUAGES, language, set_language, tr
 from .channel_controls import ChannelDialog, ScopeSettings
-from .cursors import CursorOverlay, CursorStrip, CursorView, span_text
+from .cursors import CursorOverlay, CursorStrip, CursorView, LineMark, MarkOverlay, MarkView, span_text
 from .scope import DEFAULT_FORMAT, CapturePlan, Scope, ScopeError, Waveform, channel_name, digital_channel, is_digital
 from .scope_panel import ScopePanel
 from .signal import Thresholds, auto_thresholds, digitize, manual_thresholds
@@ -33,7 +33,6 @@ DIGITAL_LEVELS = Thresholds(0.35, 0.65)  # digital samples are exactly 0 or 1
 DISPLAY_MODES = (("Logic", "logic"), ("Analog", "analog"))
 THEME_NAMES = (("Light", "light"), ("Dark", "dark"))
 MAX_TEXT_ITEMS = 120
-SEPARATOR_LABEL_POSITION = 0.95  # of the row's height
 TRIGGER_LINE_LABEL = "Trig"
 TRIGGER_LINE_WIDTH = 2
 VERTICAL_LINE_Z = 50  # above the traces
@@ -56,6 +55,7 @@ ROW_LABEL_CHARS = 22
 ROW_TABLE_COLUMN_WIDTHS = {2: 170}  # decoder rows have long names
 TEXT_MARGIN_PIXELS = 6  # a text needs this much more room than its own width
 CURSOR_STRIP_LINES = 2.3
+MARK_STRIP_LINES = 1.2
 LOGIC_Y_RANGE = (-0.2, 1.2)
 ANALOG_Y_MARGIN = 0.05  # of the swing, on both sides
 MIN_Y_SPAN_SWINGS = 2  # in the smallest swing of a signal: noise must not fill the row and look like one
@@ -230,7 +230,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.channel_rows: dict[int, pg.PlotItem] = {}
         self.analog_rows: dict[int, pg.PlotItem] = {}
         self.signal_known: dict[int, bool] = {}  # per capture, since finding out takes long on a big one
-        self.memory_read = False  # a capture or a file came in, so a missing channel is a finding
+        self.memory_read = False  # a capture or a file came in, so it is known which channels are empty
+        self.absent_channels: set[int] = set()  # asked of the scope in the last read, but not in its memory
         self.auto_y_ranges: dict[int, tuple[float, float]] = {}  # fitted once per capture
         self.manual_y_ranges: dict[int, tuple[float, float]] = {}  # stay until set back to automatic
         self.full_range = (0.0, 1.0)
@@ -330,6 +331,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cursor_overlay = CursorOverlay(self._cursor_view)
         self.graphics.scene().addItem(self.cursor_overlay)
         self.cursor_overlay.hide()
+        self.mark_strip = pg.GraphicsWidget()
+        self.mark_overlay = MarkOverlay(self._mark_view)
+        self.graphics.scene().addItem(self.mark_overlay)
         self.center_tabs = QtWidgets.QTabWidget()
         self.center_tabs.addTab(self.graphics, "")
         self._bind(lambda text: self.center_tabs.setTabText(0, text), "Waveforms")
@@ -433,6 +437,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.run_place = QtWidgets.QStackedWidget()  # Run gives way to Abort while something can be stopped
         self.run_place.addWidget(self.single_button)
         self.run_place.addWidget(self.abort_button)
+        # A stacked widget takes all the free room of a toolbar otherwise.
+        self.run_place.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         device.addWidget(self.run_place)
         device.addWidget(self.repeat_button)
         device.addSeparator()
@@ -1182,7 +1188,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                 channel=channel, done=done, total=total, speed=speed))
 
                 waves[channel] = self.scope.fetch(channel, progress=report, sample_format=sample_format)
-        absent = [channel_name(channel) for channel in channels if channel not in waves]
+        absent = [channel for channel in channels if channel not in waves]
         states = {channel: self.scope.channel_state(channel) for channel in waves if not is_digital(channel)}
         for channel, wave in waves.items():
             if not is_digital(channel):
@@ -1294,6 +1300,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _captured(self, result, keep_old=False):
         triggered, waves, states = result
         self.last_triggered = triggered
+        self.absent_channels = set(states["absent"])
         if not (keep_old and self.waves and self._append_capture(waves)):
             self._show_new_waves(waves, trigger_times=(0.0,))  # the scope's time zero is the trigger, also in a forced capture
         if not waves:
@@ -1304,7 +1311,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log(tr("Warning: no trigger within 1 s, the acquisition was forced. Check the trigger settings."))
         if states["absent"]:
             self._log(tr("Warning: the scope's memory has no channels {channels}. Turn them on and acquire.",
-                         channels=", ".join(states["absent"])))
+                         channels=", ".join(map(channel_name, states["absent"]))))
         for channel, wave in waves.items():
             if is_digital(channel):
                 continue
@@ -1828,13 +1835,9 @@ class MainWindow(QtWidgets.QMainWindow):
         return [channel for channel in sorted(wanted) if channel in names] + [channel for channel in sorted(wanted) if channel not in names]
 
     def _channel_problem(self, channel):
-        """What a row has to say about its data, with the colour to say it in, or None."""
-        if channel not in self.waves:
-            if self.waves or self.memory_read:
-                return tr("ERROR: no data. The channel was not on during the acquisition."), self.theme.error_text
-            return tr("No data. Connect to the scope and click Run or open saved waveforms (File)."), self.theme.warning_text
-        if channel not in self.scope_settings.thresholds and not self._has_signal(channel):
-            return tr("ERROR: no signal. The channel does not change level."), self.theme.error_text
+        """Only a channel asked of the scope with nothing in its memory has something to say: a flat one draws its level."""
+        if channel in self.absent_channels and channel not in self.waves:
+            return tr("ERROR: no data. The channel was not on during the acquisition."), self.theme.error_text
         return None
 
     def _is_unused(self, channel):
@@ -1849,10 +1852,10 @@ class MainWindow(QtWidgets.QMainWindow):
         unused = {channel for channel in settings.selected() if self._is_unused(channel)}
         kept = unused & (settings.locked | set(settings.conditions))
         if unused - kept:
-            self._log(tr("Hid the channels without data: {channels}.", channels=", ".join(map(channel_name, sorted(unused - kept)))))
+            self._log(tr("Hid the channels with no data or no level changes: {channels}.", channels=", ".join(map(channel_name, sorted(unused - kept)))))
         settings.untick(unused - kept)
         if kept:
-            self._log(tr("Warning: channels {channels} have no data but a decoder or the trigger uses them.",
+            self._log(tr("Warning: channels {channels} have no data or no level changes but a decoder or the trigger uses them.",
                          channels=", ".join(map(channel_name, sorted(kept)))))
 
     def _row_note(self, plot, text, color):
@@ -1901,6 +1904,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.cursor_strip.setMaximumHeight(strip_height)
             self.graphics.ci.addItem(self.cursor_strip, row=0, col=0)
             row = 1
+        if self.trigger_times or self.capture_starts:
+            strip_height = line_height * MARK_STRIP_LINES
+            self.mark_strip.setMinimumHeight(strip_height)
+            self.mark_strip.setMaximumHeight(strip_height)
+            self.graphics.ci.addItem(self.mark_strip, row=row, col=0)
+            row += 1
         master = None
         for channel in shown:
             wave = self.waves.get(channel)
@@ -1969,23 +1978,38 @@ class MainWindow(QtWidgets.QMainWindow):
         return f"{name} {tail}".strip()
 
     def _mark_capture_starts(self):
-        """A dashed line on every row where a kept capture ends and the next one begins, named on the top row."""
-        pen = pg.mkPen(self.theme.canvas_text, style=QtCore.Qt.DashLine)
-        for position, start in enumerate(self.capture_starts):
-            self._vertical_line(start, pen, tr("Acquisition {number}", number=position + 2), self.theme.canvas_text)
+        """A dashed line on every row where a kept capture ends and the next one begins."""
+        for start in self.capture_starts:
+            self._vertical_line(start, self._capture_pen())
 
     def _mark_triggers(self):
-        pen = pg.mkPen(self.theme.error_text, width=TRIGGER_LINE_WIDTH)  # the one colour no trace has
         for time in self.trigger_times:
-            self._vertical_line(time, pen, TRIGGER_LINE_LABEL, self.theme.canvas, fill=self.theme.error_text)
+            self._vertical_line(time, self._trigger_pen())
 
-    def _vertical_line(self, position, pen, label, color, fill=None):
-        """A line through every row, over the traces and named on the top one. It does not widen the view."""
+    def _capture_pen(self):
+        return pg.mkPen(self.theme.canvas_text, style=QtCore.Qt.DashLine)
+
+    def _trigger_pen(self):
+        return pg.mkPen(self.theme.error_text, width=TRIGGER_LINE_WIDTH)  # the one colour no trace has
+
+    def _vertical_line(self, position, pen):
+        """A line through every row, over the traces. It does not widen the view."""
         for plot in self.plots:
-            line = pg.InfiniteLine(position, angle=90, pen=pen, movable=False, label=label if plot is self.master else None,
-                                   labelOpts={"position": SEPARATOR_LABEL_POSITION, "color": color, "fill": fill, "anchors": [(0, 0), (0, 0)]})
+            line = pg.InfiniteLine(position, angle=90, pen=pen, movable=False)
             line.setZValue(VERTICAL_LINE_Z)
             plot.addItem(line, ignoreBounds=True)
+
+    def _mark_view(self):
+        """The lines' names, on a strip of their own above the time axis, where they cover no data."""
+        if self.master is None or not (self.trigger_times or self.capture_starts):
+            return None
+        marks = [LineMark(self._scene_x(time), TRIGGER_LINE_LABEL, self._trigger_pen(), self.theme.canvas, self.theme.error_text, False)
+                 for time in self.trigger_times]
+        marks += [LineMark(self._scene_x(start), tr("Acquisition {number}", number=position + 2), self._capture_pen(), self.theme.canvas_text, None, True)
+                  for position, start in enumerate(self.capture_starts)]
+        area = self.master.vb.sceneBoundingRect()
+        strip = self.mark_strip.sceneBoundingRect()
+        return MarkView(tuple(marks), area.left(), area.right(), strip.top(), strip.bottom(), area.top(), self.font())
 
     def _add_lane(self, key, row, master, axis_width, label):
         lane = self._new_row(row)
@@ -2044,6 +2068,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_text(self, *_args):
         self.cursor_overlay.refresh()
+        self.mark_overlay.refresh()
         if self.master is None:
             return
         data_font = QtGui.QFont(self.font())
@@ -2325,6 +2350,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log(tr("ERROR: {message}", message=tr("the file holds no waveforms.")))
             return
         self.scope_settings.choose(waves)
+        self.absent_channels = set()
         self._show_new_waves(waves, trigger_times=trigger_times)
         self._log(tr("Opened {path}: channels {channels}", path=path,
                      channels=", ".join(channel_name(channel) for channel in sorted(waves))))

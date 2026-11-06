@@ -105,9 +105,10 @@ Settings open in a separate window rather than a popup.
   pattern on D0–D15 cannot be set through SCPI: `:TRIGger:PATTern:PATTern` with more than 4 values gives -108, and 4 values act on
   CH1–CH4 (firmware 00.01.00). Such a pattern can be set by clicking the screen in the live view: an acquisition with no conditions
   leaves the trigger as it is.
-- **Channels on the waveforms:** each ticked channel has its row. A channel with no data in memory or with no level changes shows
-  an error on its row. **Hide unused** unticks such channels with one click, except those used by a decoder or the trigger, and a
-  channel ticked again shows again. Opening a file selects the channels of that file.
+- **Channels on the waveforms:** each ticked channel has its row. A channel with no level changes draws its constant level: its
+  voltage in the Analog view, low or high in the Logic view. A channel asked for in a read with nothing in the scope's memory shows an
+  error on its row. **Hide unused** unticks both kinds with one click, except those used by a decoder or the trigger, and a channel
+  ticked again shows again. Opening a file selects the channels of that file.
 - **Clicking a channel label:** a window like PulseView's channel popup, with the trigger condition (none, low, high, edges), the
   threshold and, in the Analog view, the vertical scale. D0–D15 have edges only, as the scope's pattern takes CH1–CH4 alone. CH1–CH4
   can be combined into a pattern with one rising or falling edge, and either edge works only on its own. An acquisition with a

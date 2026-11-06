@@ -1591,12 +1591,12 @@ def test_fetch_refuses_a_channel_the_scope_will_not_switch_to():
 def test_reading_memory_leaves_out_channels_that_are_off_and_tells(window):
     window.scope = ChannelScope({1})
     waves, states = window._read_job([1, 4], lambda _text: None, "BYTE")
-    assert list(waves) == [1] and states["absent"] == ["CH4"]
+    assert list(waves) == [1] and states["absent"] == [4]
     assert waves[1].volts_per_div == 0.5
     window._captured((True, waves, states))
     assert "CH4" in window.last_message_text or "CH4" in window.log.toPlainText()
     waves, states = window._read_job([2], lambda _text: None, "BYTE")  # nothing at all is a finding as well
-    assert waves == {} and states["absent"] == ["CH2"]
+    assert waves == {} and states["absent"] == [2]
     window.scope = None
 
 
@@ -1671,20 +1671,93 @@ def test_all_channels_unticked_leaves_a_word_and_no_crash(window):
     assert window.master is not None
 
 
-def test_a_chosen_channel_always_has_its_row_with_what_is_wrong_on_it(window):
+def test_only_a_read_of_a_channel_missing_from_memory_writes_no_data_on_its_row(window):
     picker = window.scope_settings
     picker.choose((1, 3, 4))
-    window._show_new_waves({1: square_wave(1), 3: noise_wave(3)})
-    assert sorted(window.channel_rows) == [1, 3, 4]
-    notes = [note.text() for note in window.row_notes]
-    assert len(notes) == 2 and any("no signal" in note for note in notes) and any("no data" in note.lower() for note in notes)
+    window.scope = ChannelScope({1})
+    window._captured((True, *window._read_job([1, 4], lambda _text: None, "BYTE")))
+    window.scope = None
+    assert sorted(window.channel_rows) == [1, 3, 4]  # CH3 was not asked for: an empty row with nothing to report
+    assert [note.text() for note in window.row_notes] == ["ERROR: no data. The channel was not on during the acquisition."]
+    assert window.row_notes[0].parentItem() is window.channel_rows[4].vb
+    picker.boxes[4].setChecked(False)
+    assert window.row_notes == []
 
 
-def test_rows_are_there_before_any_capture(window):
+def test_a_file_forgets_what_the_last_read_lacked(window, tmp_path):
+    window.scope = ChannelScope({1})
+    window._captured((True, *window._read_job([1, 4], lambda _text: None, "BYTE")))
+    window.scope = None
+    path = str(tmp_path / "waves.npz")
+    window.save_waves_to(path)
+    window.open_waves_from(path)
+    window.scope_settings.boxes[4].setChecked(True)
+    assert 4 in window.channel_rows and window.row_notes == []
+
+
+def test_rows_are_there_before_any_capture_and_say_nothing(window):
     window.scope_settings.choose((1, 2))
     window._plot()
     assert sorted(window.channel_rows) == [1, 2] and window.master is not None
-    assert all(note.text().startswith("No data") for note in window.row_notes)
+    assert window.row_notes == []
+
+
+def constant(channel, value, digital=False):
+    kind = np.uint8 if digital else np.float32
+    return Waveform(channel, np.full(1000, value, dtype=kind), 1e-6, 0.0, digital=digital, volts_per_div=1.0)
+
+
+def drawn(plot):
+    return plot.listDataItems()[0].yData
+
+
+@pytest.mark.parametrize("wave, level", [(constant(1, 3.3), 1), (constant(1, 0.0), 0), (constant(1, -3.3), 0),
+                                         (constant(digital_channel(0), 1, True), 1), (constant(digital_channel(0), 0, True), 0)])
+def test_a_constant_channel_draws_its_level_in_the_logic_view(window, wave, level):
+    window.display_mode.setCurrentIndex(window.display_mode.findData("logic"))
+    window.scope_settings.choose((wave.channel,))
+    window._show_new_waves({wave.channel: wave})
+    assert window.row_notes == [] and set(drawn(window.channel_rows[wave.channel])) == {level}
+
+
+def test_a_constant_channel_draws_its_voltage_in_the_analog_view(window):
+    window.display_mode.setCurrentIndex(window.display_mode.findData("analog"))
+    window.scope_settings.choose((1,))
+    window._show_new_waves({1: constant(1, 3.3)})
+    plot = window.channel_rows[1]
+    low, high = plot.viewRange()[1]
+    assert window.row_notes == [] and low < 3.3 < high and np.allclose(drawn(plot), 3.3)
+    window.display_mode.setCurrentIndex(window.display_mode.findData("logic"))
+
+
+def test_the_trigger_and_acquisition_names_sit_above_the_data(window, app):
+    window.resize(1500, 900)
+    window.show()
+    window.scope_settings.choose((1,))
+    window._show_new_waves({1: square_wave(1)}, capture_starts=(0.005,), trigger_times=(0.0, 0.01))
+    app.processEvents()
+    view = window._mark_view()
+    assert [mark.text for mark in view.marks] == ["Trig", "Trig", "Acquisition 2"]
+    assert view.strip_bottom <= view.view_top  # above the master's traces, and the time axis is between them
+    assert view.strip_bottom <= window.master.getAxis("top").sceneBoundingRect().top() + 1
+    lines = [item for item in window.master.items if type(item).__name__ == "InfiniteLine"]
+    assert len(lines) == 3 and all(getattr(line, "label", None) is None for line in lines)  # nothing painted on the data
+    window.hide()
+
+
+def test_no_marks_no_strip(window):
+    window.scope_settings.choose((1,))
+    window._show_new_waves({1: square_wave(1)})
+    assert window._mark_view() is None and window.mark_strip not in window.graphics.ci.items
+
+
+def test_run_takes_only_the_room_its_text_needs(window, app):
+    window.resize(1500, 900)
+    window.show()
+    app.processEvents()
+    place = window.run_place
+    assert place.width() == place.sizeHint().width() and place.width() < window.read_button.width() * 2
+    window.hide()
 
 
 def test_hide_unused_unticks_what_has_no_data_and_a_tick_brings_it_back(window):
@@ -1694,7 +1767,7 @@ def test_hide_unused_unticks_what_has_no_data_and_a_tick_brings_it_back(window):
     picker.hide_unused.click()
     assert picker.selected() == {1} and sorted(window.channel_rows) == [1]
     picker.boxes[4].setChecked(True)
-    assert sorted(window.channel_rows) == [1, 4] and window.row_notes
+    assert sorted(window.channel_rows) == [1, 4]
 
 
 def test_hide_unused_leaves_what_a_decoder_or_the_trigger_uses(window):
