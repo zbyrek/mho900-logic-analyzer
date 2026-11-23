@@ -3,6 +3,10 @@
 ##
 ## Copyright (C) 2015 Josef Gajdusek <atx@atx.name>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the power class has two
+## bits; hold-off and extended identification packets do not stop the
+## decoder.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -136,15 +140,15 @@ class Decoder(srd.Decoder):
                        'CS: %d' % self.packet[1], 'CS'])
         elif self.packet[0] == 0x06: # Power Control Hold-off
             self.putp(['Power Control Hold-off: %dms' % self.packet[1],
-                       'PCH: %d' % self.packet[1]], 'PCH')
+                       'PCH: %d' % self.packet[1], 'PCH'])
         elif self.packet[0] == 0x51: # Configuration
-            powerclass = (self.packet[1] & 0xc0) >> 7
+            powerclass = (self.packet[1] & 0xc0) >> 6
             maxpower = self.packet[1] & 0x3f
             prop = (self.packet[3] & 0x80) >> 7
             count = self.packet[3] & 0x07
             winsize = (self.packet[4] & 0xf8) >> 3
             winoff = self.packet[4] & 0x07
-            self.putp(['Configuration: Power Class = %d, Maximum Power = %d, Prop = %d,'
+            self.putp(['Configuration: Power Class = %d, Maximum Power = %d, Prop = %d, '
                        'Count = %d, Window Size = %d, Window Offset = %d' %
                        (powerclass, maxpower, prop, count, winsize, winoff),
                        'C: PC = %d MP = %d P = %d C = %d WS = %d WO = %d' %
@@ -159,7 +163,7 @@ class Decoder(srd.Decoder):
                        'Device = %s' % (version, mancode, devid),
                        'ID: %s %s %s' % (version, mancode, devid), 'ID'])
         elif self.packet[0] == 0x81: # Extended Identification
-            edevid = '%02x%02x%02x%02x%02x%02x%02x%02x' % self.packet[1:-1]
+            edevid = '%02x%02x%02x%02x%02x%02x%02x%02x' % tuple(self.packet[1:-1])
             self.putp(['Extended Identification: %s' % edevid,
                        'EI: %s' % edevid, 'EI'])
         elif self.packet[0] in (0x18, 0x19, 0x28, 0x29, 0x38, 0x48, 0x58, 0x68,

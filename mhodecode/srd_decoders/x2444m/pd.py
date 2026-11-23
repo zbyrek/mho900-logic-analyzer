@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2018 Stefan Petersen <spe@ciellt.se>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: data words are read
+## D0 first, as in the Xicor X24C44 datasheet.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -31,6 +34,10 @@ registers = {
     0x87: ['READ',  6, lambda v: '0x%x' % v],
     # 0x86/0x87 are both valid READ commands (bit 0 is "don't care").
 }
+
+def data_word(value):
+    '''The memory transfers D0 first; the SPI decoder reads MSB first.'''
+    return int('{:016b}'.format(value & 0xFFFF)[::-1], 2)
 
 class Decoder(srd.Decoder):
     api_version = 3
@@ -96,9 +103,9 @@ class Decoder(srd.Decoder):
                 elif self.cmd_digit > 1:
                     name, idx, decoder = registers[self.addr & 0x87]
                     if name == 'READ':
-                        value = self.read_value
+                        value = data_word(self.read_value)
                     elif name == 'WRITE':
-                        value = self.write_value
+                        value = data_word(self.write_value)
                     else:
                         value = 0
                     self.putreadwrite(self.addr_start, es, name, idx,

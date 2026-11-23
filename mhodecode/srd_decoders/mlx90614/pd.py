@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2012 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: temperatures are read
+## from the datasheet's SMBus read word (repeated start with read address).
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -18,6 +21,9 @@
 ##
 
 import sigrokdecode as srd
+
+# RAM addresses of the ambient and the two object temperatures.
+temperature_commands = (0x06, 0x07, 0x08)
 
 class Decoder(srd.Decoder):
     api_version = 3
@@ -42,7 +48,8 @@ class Decoder(srd.Decoder):
         self.reset()
 
     def reset(self):
-        self.state = 'IGNORE START REPEAT'
+        self.state = 'IDLE'
+        self.command = None
         self.data = []
 
     def start(self):
@@ -51,32 +58,34 @@ class Decoder(srd.Decoder):
     def putx(self, data):
         self.put(self.ss, self.es, self.out_ann, data)
 
-    # Quick hack implementation! This needs to be improved a lot!
+    # Temperatures are SMBus read words of RAM addresses 0x06 to 0x08: address
+    # with write, command, repeated start, address with read, low byte, high
+    # byte, PEC. The top bit of the word is an error flag.
     def decode(self, ss, es, data):
         cmd, databyte = data
 
-        # State machine.
-        if self.state == 'IGNORE START REPEAT':
-            if cmd != 'START REPEAT':
-                return
-            self.state = 'IGNORE ADDRESS WRITE'
-        elif self.state == 'IGNORE ADDRESS WRITE':
-            if cmd != 'ADDRESS WRITE':
-                return
-            self.state = 'GET TEMPERATURE'
-        elif self.state == 'GET TEMPERATURE':
-            if cmd != 'DATA WRITE':
-                return
+        if cmd in ('START', 'STOP'):
+            self.state = 'IDLE'
+            self.command = None
+            self.data = []
+        elif cmd == 'ADDRESS WRITE':
+            self.state = 'GET COMMAND'
+        elif cmd == 'DATA WRITE':
+            self.command = databyte if self.state == 'GET COMMAND' else None
+            self.state = 'COMMAND DONE'
+        elif cmd == 'ADDRESS READ':
+            self.state = 'GET TEMPERATURE' if self.command in temperature_commands else 'IDLE'
+            self.data = []
+        elif cmd == 'DATA READ' and self.state == 'GET TEMPERATURE':
             if len(self.data) == 0:
-                self.data.append(databyte)
                 self.ss = ss
-            elif len(self.data) == 1:
-                self.data.append(databyte)
+            self.data.append(databyte)
+            if len(self.data) == 2:
                 self.es = es
-            else:
-                kelvin = (self.data[0] | (self.data[1] << 8)) * 0.02
-                celsius = kelvin - 273.15
-                self.putx([0, ['Temperature: %3.2f °C' % celsius]])
-                self.putx([1, ['Temperature: %3.2f K' % kelvin]])
-                self.state = 'IGNORE START REPEAT'
-                self.data = []
+                raw = self.data[0] | (self.data[1] << 8)
+                if not raw & 0x8000:
+                    kelvin = raw * 0.02
+                    celsius = kelvin - 273.15
+                    self.putx([0, ['Temperature: %3.2f °C' % celsius]])
+                    self.putx([1, ['Temperature: %3.2f K' % kelvin]])
+                self.state = 'IDLE'

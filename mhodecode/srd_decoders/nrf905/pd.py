@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2020 Jorge Solla Rubiales <jorgesolla@gmail.com>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: a CHANNEL_CONFIG command
+## does not crash the decoder; a missing SPI line is named.
+##
 ## Permission is hereby granted, free of charge, to any person obtaining a copy
 ## of this software and associated documentation files (the "Software"), to deal
 ## in the Software without restriction, including without limitation the rights
@@ -23,6 +26,9 @@
 
 import sigrokdecode as srd
 from common.srdhelper import SrdIntEnum
+
+class ChannelError(Exception):
+    pass
 
 CFG_REGS = {
     0: [{'name': 'CH_NO', 'stbit': 7, 'nbits': 8}],
@@ -205,10 +211,12 @@ class Decoder(srd.Decoder):
         self.dump_cmd_bytes('Read RX payload: ', self.miso_bytes, Ann.RX)
 
     def handle_CC(self):
+        if len(self.mosi_bytes) < 2:
+            return
         cmd, dta = self.mosi_bytes[0], self.mosi_bytes[1]
-        channel = ((cmd[0] & 0x01) << 8) + dta
+        channel = ((cmd[0] & 0x01) << 8) + dta[0]
         data = self.extract_vars(CHN_CFG, cmd[0])
-        data += '| CHN = ' + str(channel)
+        data += ' | CHN = ' + str(channel)
         self.put(self.mosi_bytes[0][1], self.mosi_bytes[1][2],
                  self.out_ann, [Ann.REG_WR, [data]])
 

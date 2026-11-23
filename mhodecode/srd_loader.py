@@ -1,4 +1,4 @@
-"""Loads the unmodified libsigrokdecode decoders in mhodecode/srd_decoders."""
+"""Loads the libsigrokdecode decoders in mhodecode/srd_decoders."""
 from __future__ import annotations
 
 import importlib.util

@@ -4,6 +4,9 @@
 ## Copyright (C) 2012-2020 Uwe Hermann <uwe@hermann-uwe.de>
 ## Copyright (C) 2013 Matt Ranostay <mranostay@gmail.com>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the date and time are
+## shown only for transfers that carry all of them.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -93,6 +96,7 @@ class Decoder(srd.Decoder):
         self.months = -1
         self.years = -1
         self.bits = []
+        self.seen = set()
 
     def start(self):
         self.out_ann = self.register(srd.OUTPUT_ANN)
@@ -187,6 +191,9 @@ class Decoder(srd.Decoder):
 
     def output_datetime(self, cls, rw):
         # TODO: Handle read/write of only parts of these items.
+        # Only when this transfer carried all the date and time registers.
+        if not self.seen.issuperset(range(7)):
+            return
         d = '%s, %02d.%02d.%4d %02d:%02d:%02d' % (
             days_of_week[self.days - 1], self.date, self.months,
             self.years, self.hours, self.minutes, self.seconds)
@@ -194,6 +201,7 @@ class Decoder(srd.Decoder):
                  [cls, ['%s date/time: %s' % (rw, d)]])
 
     def handle_reg(self, b):
+        self.seen.add(self.reg)
         r = self.reg if self.reg < 8 else 0x3f
         fn = getattr(self, 'handle_reg_0x%02x' % r)
         fn(b)
@@ -229,6 +237,7 @@ class Decoder(srd.Decoder):
                 return
             self.state = 'GET SLAVE ADDR'
             self.ss_block = ss
+            self.seen = set()
         elif self.state == 'GET SLAVE ADDR':
             # Wait for an address write operation.
             if cmd != 'ADDRESS WRITE':

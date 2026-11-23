@@ -3,6 +3,8 @@
 ##
 ## Copyright (C) 2011-2014 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: half STOP bits.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -233,20 +235,27 @@ class Decoder(srd.Decoder):
             # The width of one UART bit in number of samples.
             self.bit_width = float(self.samplerate) / float(self.options['baudrate'])
 
-    def get_sample_point(self, rxtx, bitnum):
+    def get_sample_point(self, rxtx, bitnum, width = 1.0):
         # Determine absolute sample number of a bit slot's sample point.
         # Counts for UART bits start from 0 (0 = start bit, 1..x = data,
         # x+1 = parity bit (if used) or the first stop bit, and so on).
+        # The width is the bit slot's length in bits, and differs from 1 only
+        # for half STOP bits.
         # Accept a position in the range of 1-99% of the full bit width.
         # Assume 50% for invalid input specs for backwards compatibility.
         perc = self.options['sample_point'] or 50
         if not perc or perc not in range(1, 100):
             perc = 50
         perc /= 100.0
-        bitpos = (self.bit_width - 1) * perc
+        bitpos = (self.bit_width * width - 1) * perc
         bitpos += self.frame_start[rxtx]
         bitpos += bitnum * self.bit_width
         return bitpos
+
+    def in_half_stop_bit(self, rxtx):
+        # True when the next bit is the last STOP bit and only half a bit long.
+        left = self.options['stop_bits'] - len(self.stopbits[rxtx])
+        return self.state[rxtx] == 'GET STOP BITS' and left == 0.5
 
     def wait_for_start_bit(self, rxtx, signal):
         # Save the sample number where the start bit begins.
@@ -408,17 +417,19 @@ class Decoder(srd.Decoder):
         self.advance_state(rxtx, signal)
 
     def get_stop_bits(self, rxtx, signal):
+        halfslot = self.bit_width / (4.0 if self.in_half_stop_bit(rxtx) else 2.0)
+        ss, es = self.samplenum - floor(halfslot), self.samplenum + ceil(halfslot)
         self.stopbits[rxtx].append(signal)
         self.cur_frame_bit[rxtx] += 1
 
         # Stop bits must be 1. If not, we report an error.
         if signal != 1:
-            self.putp(['INVALID STOPBIT', rxtx, signal])
-            self.putg([Ann.RX_WARN + rxtx, ['Frame error', 'Frame err', 'FE']])
+            self.putpse(ss, es, ['INVALID STOPBIT', rxtx, signal])
+            self.putgse(ss, es, [Ann.RX_WARN + rxtx, ['Frame error', 'Frame err', 'FE']])
             self.frame_valid[rxtx] = False
 
-        self.putp(['STOPBIT', rxtx, signal])
-        self.putg([Ann.RX_STOP + rxtx, ['Stop bit', 'Stop', 'T']])
+        self.putpse(ss, es, ['STOPBIT', rxtx, signal])
+        self.putgse(ss, es, [Ann.RX_STOP + rxtx, ['Stop bit', 'Stop', 'T']])
 
         # Postprocess the UART frame after all STOP bits were seen.
         if len(self.stopbits[rxtx]) < self.options['stop_bits']:
@@ -472,7 +483,8 @@ class Decoder(srd.Decoder):
             # end of the previously received UART frame. This improves
             # robustness in the presence of glitchy input data.
             ss = self.frame_start[rxtx]
-            es = self.samplenum + ceil(self.bit_width / 2.0)
+            half_stop_bit = self.options['stop_bits'] in (0.5, 1.5)
+            es = self.samplenum + ceil(self.bit_width / (4.0 if half_stop_bit else 2.0))
             self.handle_frame(rxtx, ss, es)
             self.state[rxtx] = 'WAIT FOR START BIT'
             self.idle_start[rxtx] = frame_end
@@ -504,8 +516,8 @@ class Decoder(srd.Decoder):
         if state in ('GET START BIT', 'GET DATA BITS',
                 'GET PARITY BIT', 'GET STOP BITS'):
             bitnum = self.cur_frame_bit[rxtx]
-            # TODO: Currently does not support half STOP bits.
-            want_num = ceil(self.get_sample_point(rxtx, bitnum))
+            width = 0.5 if self.in_half_stop_bit(rxtx) else 1.0
+            want_num = ceil(self.get_sample_point(rxtx, bitnum, width))
             return {'skip': want_num - self.samplenum}
 
     def get_idle_cond(self, rxtx, inv):

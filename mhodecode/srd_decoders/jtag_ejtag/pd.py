@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2018 Vladislav Ivanov <vlad.ivanov@lab-systems.ru>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the annotations belong
+## to the DR scan they are shown at.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -370,10 +373,7 @@ class Decoder(srd.Decoder):
             self.put_current([Ann.INSTRUCTION, [hexval, 'IR TDI ({})'.format(hexval)]])
         self.select_reg(code)
 
-    def handle_new_state(self, new_state):
-        if new_state != 'UPDATE-DR' or not hasattr(self, 'last_data'):
-            return
-
+    def handle_dr_done(self):
         if self.state == State.RESET:
             return
 
@@ -403,6 +403,6 @@ class Decoder(srd.Decoder):
         elif cmd == 'DR TDI':
             self.handle_dr_tdi(val)
         elif cmd == 'DR TDO':
+            # The TDO data is the last item of a DR scan.
             self.handle_dr_tdo(val)
-        elif cmd == 'NEW STATE':
-            self.handle_new_state(val)
+            self.handle_dr_done()

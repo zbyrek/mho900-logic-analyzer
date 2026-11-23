@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2019 Marco Geisler <m-sigrok@mageis.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: a missing SPI line is
+## named; the exception for it did not exist.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -21,6 +24,9 @@ import sigrokdecode as srd
 from collections import namedtuple
 from common.srdhelper import SrdIntEnum
 from .lists import *
+
+class ChannelError(Exception):
+    pass
 
 Ann = SrdIntEnum.from_str('Ann', 'STROBE SINGLE_READ SINGLE_WRITE BURST_READ \
     BURST_WRITE STATUS_READ STATUS WARN')

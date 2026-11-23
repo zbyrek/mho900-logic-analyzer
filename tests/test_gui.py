@@ -2779,3 +2779,48 @@ def test_a_flat_line_beside_a_working_one_does_not_stop_the_decoder(window):
     assert "RX does not change level" in card.status.text() and not card.problem
     assert [item for item in window.result.annotations if ":tx-" in item.row]
     assert not [item for item in window.result.annotations if ":rx-" in item.row]
+
+
+class SlowBaseScope:
+    """What a slow time base leaves in the saved file: no digital record (measured)."""
+    def __init__(self, scale, data, enabled="1"):
+        self.scale, self.data, self.enabled = scale, data, enabled
+
+    digital_left_out = Scope.digital_left_out
+
+    def query(self, command):
+        return {":LA:ENABle?": self.enabled}[command]
+
+    def query_float(self, command):
+        return {":TIMebase:MAIN:SCALe?": self.scale}[command]
+
+    def save_memory(self, progress=None):
+        return self.data
+
+    def channel_state(self, channel):
+        return {"scale": 1.0, "probe": 1.0, "coupling": "DC"}
+
+    def digital_thresholds(self):
+        return {1: 1.65, 2: 1.65}
+
+
+@pytest.mark.parametrize("scale, enabled, data, left_out", [
+    (0.05, "1", bin_file(), True),
+    (0.1, "1", bin_file(bin_record(1, b"CH1", 8, np.zeros(8, "<f4").tobytes())), True),
+    (0.02, "1", bin_file(), False),
+    (0.05, "0", bin_file(), False),
+    (0.05, "1", bin_file(bin_record(6, b"LA", 4, np.zeros(4, "<u4").tobytes(), declared=16 * 4)), False),
+])
+def test_a_slow_time_base_that_leaves_out_the_digital_channels_is_named(window, monkeypatch, scale, enabled, data, left_out):
+    logged = []
+    monkeypatch.setattr(window, "_log", logged.append)
+    window.scope = SlowBaseScope(scale, data, enabled)
+    try:
+        waves, states = window._read_job([digital_channel(0)], lambda text: None, "BYTE")
+    finally:
+        window.scope = None
+    assert states["digital_left_out"] is left_out
+    window._captured((True, waves, states))
+    slow = [text for text in logged if "50 ms/div" in text]
+    assert bool(slow) is left_out and all("D0" in text for text in slow)
+    assert any("has no channels" in text for text in logged) is (not left_out and digital_channel(0) not in waves)

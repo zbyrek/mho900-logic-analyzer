@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2012-2013 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the PIN of AT+JSEC is
+## read with its given length.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -102,8 +105,10 @@ class Decoder(srd.Decoder):
             # pinlen: PIN length (2 decimal digits). Max. PIN length is 16.
             # pin: The Bluetooth PIN ('pinlen' chars). Used if pintype=2.
             # Note: AT+JSEC (if used) must be the first command after reset.
-            # TODO: Parse all the other parameters.
-            pin = s[-4:]
+            fields = s[s.find('=') + 1:].split(',', 4)
+            pin = fields[-1]
+            if len(fields) == 5 and fields[3].isdigit():
+                pin = pin[:int(fields[3])]
             self.putx([0, ['Host set the Bluetooth PIN to "' + pin + '"']])
             self.putx([1, ['PIN = ' + pin]])
         elif s.startswith('AT+JSLN'):

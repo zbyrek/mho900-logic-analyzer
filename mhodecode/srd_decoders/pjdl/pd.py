@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2020 Gerhard Sittig <gerhard.sittig@gmx.net>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: pad bit times of the
+## PJDL specification v5.0.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -153,10 +156,10 @@ class Decoder(srd.Decoder):
     # Communication modes' data bit and pad bit duration (in us), and
     # tolerances in percent and absolute (us).
     mode_times = {
-        1: (44, 116),
+        1: (44, 110),
         2: (40, 92),
-        3: (28, 88),
-        4: (26, 60),
+        3: (28, 70),
+        4: (26, 65),
     }
     time_tol_perc = 10
     time_tol_abs = 1.5
