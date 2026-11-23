@@ -1110,6 +1110,9 @@ class MainWindow(QtWidgets.QMainWindow):
             memory = self._read_file_job(digital_wanted, progress)
             waves = memory.waves
             left_out = bool(digital_wanted) and not memory.digital_factor and self.scope.digital_left_out()
+        elif self.scope.fetch_mixes_channels(channels):
+            waves, left_out = self._read_file_job([], progress).waves, False
+            waves = {channel: wave for channel, wave in waves.items() if channel in channels}
         else:
             waves, left_out = {}, False
             for channel in channels:

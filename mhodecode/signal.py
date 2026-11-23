@@ -11,6 +11,11 @@ import numpy as np
 HYSTERESIS_FRACTION = 0.3
 # Swings below this are treated as a constant level (noise on an idle input).
 MIN_SWING_V = 0.02
+# A signal rests on a level where this many samples differ by no more than the tolerance, a fraction of the whole range
+# of the samples. A spike has a peak but no such rest. A level must also lie by the margin beyond the usual ones to count.
+REST_SAMPLES = 5
+REST_TOLERANCE = 0.15
+REST_MARGIN = 0.05
 # A pause this many times the typical time between a line's edges ends a packet. Long enough for the longest run of
 # equal bits of a frame, which leaves pauses between frames shorter than this inside one packet.
 PACKET_PAUSE_FACTOR = 20
@@ -56,10 +61,32 @@ class Thresholds:
     high: float
 
 
+def _highest_rest(volts: np.ndarray, usual: float, margin: float, tolerance: float) -> float:
+    """The highest level above the usual one on which the signal rests, or the usual one. All the samples of a rest lie
+    above it, so a small spike next to the usual level is none."""
+    starts = np.flatnonzero(volts > usual + margin)
+    starts = starts[starts <= len(volts) - REST_SAMPLES]
+    lowest = highest = volts[starts]
+    for shift in range(1, REST_SAMPLES):
+        after = volts[starts + shift]
+        lowest, highest = np.minimum(lowest, after), np.maximum(highest, after)
+    rests = lowest[(lowest > usual + margin) & (highest - lowest <= tolerance)]
+    return float(rests.max()) if len(rests) else usual
+
+
+def _signal_levels(volts: np.ndarray) -> tuple[float, float]:
+    """The bottom and the top of the signal. The percentiles leave out overshoot and spikes, and with them a pulse that
+    takes a smaller share of the record, so a level on which the signal rests counts however rare it is."""
+    stride = max(1, len(volts) // 2_000_000)
+    bottom, top = (float(level) for level in np.percentile(volts[::stride], [0.5, 99.5]))
+    whole = float(volts.max()) - float(volts.min())
+    margin, tolerance = whole * REST_MARGIN, whole * REST_TOLERANCE
+    return -_highest_rest(-volts, -bottom, margin, tolerance), _highest_rest(volts, top, margin, tolerance)
+
+
 def auto_thresholds(volts: np.ndarray, min_swing: float = MIN_SWING_V) -> Thresholds | None:
     """Thresholds from the signal swing, or None if the input does not toggle."""
-    stride = max(1, len(volts) // 2_000_000)
-    bottom, top = np.percentile(volts[::stride], [0.5, 99.5])
+    bottom, top = _signal_levels(volts)
     swing = top - bottom
     if swing < min_swing:
         return None
@@ -69,8 +96,8 @@ def auto_thresholds(volts: np.ndarray, min_swing: float = MIN_SWING_V) -> Thresh
 
 def manual_thresholds(level: float, volts: np.ndarray) -> Thresholds:
     """Thresholds around a user level, band scaled to the measured swing."""
-    swing = float(np.percentile(volts, 99.5) - np.percentile(volts, 0.5))
-    half = max(swing, MIN_SWING_V) * HYSTERESIS_FRACTION / 2
+    bottom, top = _signal_levels(volts)
+    half = max(top - bottom, MIN_SWING_V) * HYSTERESIS_FRACTION / 2
     return Thresholds(level - half, level + half)
 
 

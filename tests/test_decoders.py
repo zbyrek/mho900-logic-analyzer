@@ -6,7 +6,7 @@ from mhodecode import siggen
 from mhodecode.decoders import SIGROK_ROOTS
 from mhodecode.siggen import crc15
 from mhodecode.scope import Waveform
-from mhodecode.signal import digitize, from_levels
+from mhodecode.signal import auto_thresholds, digitize, from_levels
 
 RNG = np.random.default_rng(1234)
 
@@ -50,6 +50,39 @@ def test_constant_input_gives_no_edges():
     assert trace.edges == [] and trace.initial == 1
     trace = digitize(RNG.normal(0, 0.001, 1000), 1e-6, 0.0)
     assert trace.edges == [] and trace.initial == 0
+
+
+def pulse_record(high=3.3, width=20, points=100_000):
+    volts = RNG.normal(0, 0.02, points)
+    volts[50_000:50_000 + width] += high
+    return volts
+
+
+@pytest.mark.parametrize("width", [5, 20, 400])
+@pytest.mark.parametrize("sign", [1, -1])
+def test_a_pulse_much_shorter_than_the_record_is_found(width, sign):
+    trace = digitize(sign * pulse_record(width=width), 1e-6, 0.0)
+    assert trace.edges == [50_000, 50_000 + width] and trace.initial == (0 if sign > 0 else 1)
+
+
+def test_a_short_spike_on_a_constant_level_is_no_signal():
+    trace = digitize(pulse_record(width=3), 1e-6, 0.0, None, 0.3)
+    assert trace.edges == []
+
+
+def test_crosstalk_spikes_of_several_heights_on_a_constant_level_are_no_signal():
+    volts = RNG.normal(0, 0.01, 100_000)
+    for start, height in zip(range(1000, 33_000, 1000), np.linspace(-0.55, 0.55, 32)):
+        volts[start:start + 2] += height
+        volts[start + 2] += height / 4  # the spike's tail
+    assert digitize(volts, 1e-6, 0.0, None, 0.1).edges == []
+
+
+def test_a_rare_pulse_does_not_move_the_levels_of_a_signal_with_overshoot():
+    volts = np.tile(np.r_[np.zeros(1000), np.full(1000, 3.3)], 50)
+    volts[1000::2000] = 4.2
+    found = auto_thresholds(volts)
+    assert (found.low + found.high) / 2 == pytest.approx(1.65, abs=0.01)
 
 
 # ---- the signals of this program read by the sigrok decoders ---------------------

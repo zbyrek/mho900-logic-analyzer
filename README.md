@@ -64,6 +64,9 @@ division between the extreme values, so with the automatic threshold a signal be
 weaker signal, for example 3.3 V at 20 V/div, needs a manual threshold in the decoder settings. A BIN file opened from disk has
 no scale, so only a fixed limit of 20 mV applies there.
 
+The automatic threshold finds pulses that take a tiny share of the record, as long as a pulse rests on its level for 5 samples.
+Crosstalk on a line that stays constant can still give false edges when it is above that limit, and needs a manual threshold.
+
 ## Memory read speed
 
 The default format is BYTE in one block, the fastest way to get data out of this instrument. Times measured for 10 M points:
@@ -79,6 +82,9 @@ The default format is BYTE in one block, the fastest way to get data out of this
 100 M points in BYTE take about 55 s. BYTE is the upper byte of a WORD sample. WORD (on the **Read format** list) is useful
 when a signal takes a small fraction of the range. The limit is the instrument's SCPI path, about 1.8 MB/s: FTP on the same link
 gives 11.8 MB/s, and a larger socket buffer changes nothing.
+
+When the trigger listens to an analog channel that is off, the scope mixes up the channels read through SCPI (measured on firmware
+00.01.00), while the file is right. The program then reads the file, whatever the **Read format**.
 
 ## Program window
 
