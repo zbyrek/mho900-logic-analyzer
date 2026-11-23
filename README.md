@@ -174,6 +174,8 @@ the scope and downloaded over FTP, as `:WAVeform:SOURce` does not take D0–D15.
 - **Threshold:** the default threshold is 0 V, and 0–3.3 V logic needs about 1.65 V. It is set on the Oscilloscope tab.
 - **Sample density:** digital channels have 1/4 of the samples of an analog channel with one channel on, 1/2 with two, and the same
   number with four. The program reads this ratio from the file.
+- **Slow time base:** at 50 ms/div and slower the scope saves no digital channels to the file (measured on firmware 00.01.00 at 50 and
+  100 ms/div, also with auto roll off; 20 ms/div is right). The program says so in the log. Digital channels need 20 ms/div or faster.
 - **Combining with analog:** digital channels were measured lagging analog ones by 900 ns at 10 MSa/s, 160 ns at 50 MSa/s, 39 ns at
   1 GSa/s and 19.5 ns at 2 GSa/s, on one set of leads whose lengths were not compared. The cause was not established. Leads can add a
   fixed time, but cannot alone explain a delay that changes with the sample rate. The program does not correct it, and it warns in the log
@@ -194,7 +196,11 @@ the scope and downloaded over FTP, as `:WAVeform:SOURce` does not take D0–D15.
 All decoders of the program come from sigrok. The search above the tree filters them by name and description, and the **Sort** list
 arranges them by category or parent protocol: a decoder that needs another, for example `i2cdemux`, then lies under it (I²C).
 
-The unchanged decoders are in `mhodecode/srd_decoders` (130 in use, the version from the repository of 2024-10-01).
+The decoders are in `mhodecode/srd_decoders` (130 in use, the version from the repository of 2024-10-01). They are unchanged except for
+corrections in `amulet_ascii`, `arm_etmv3`, `atsha204a`, `avr_pdi`, `can`, `cc1101`, `ds1307`, `ds2408`, `ds28ea00`, `dsi`, `eeprom24xx`, `em4305`,
+`ir_rc6`, `jtag_ejtag`, `jtag_stm32`, `lfast`, `lm75`, `lpc`, `ltc26x7`, `mlx90614`, `mxc6225xu`, `nrf905`, `nunchuk`, `pan1321`, `pjdl`,
+`qi`, `rfm12`, `sae_j1850_vpw`, `sda2506`, `sdcard_spi`, `sipi`, `sle44xx`, `spiflash`, `st25r39xx_spi`, `st7735`, `swd`, `swim`, `tca6408a`, `uart`,
+`usb_power_delivery`, `x2444m`, `xfp`, `xy2-100` and `z80`, which the header of each of these files names.
 The file `mhodecode/sigrokdecode.py` replaces the core written in C, so the decoders do not need sigrok to be installed.
 
 **Decoder lane.** An added decoder has a lane on the time axis at once, also with no data. Rows appear when they have annotations, and

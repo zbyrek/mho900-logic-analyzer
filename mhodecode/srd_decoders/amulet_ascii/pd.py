@@ -3,6 +3,10 @@
 ##
 ## Copyright (C) 2019 Vesa-Pekka Palmu <vpalmu@depili.fi>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the commands page, get
+## variable, RPC, arrays, replies and drawing do not crash the decoder and
+## end after their last byte.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 3 of the License, or
@@ -117,14 +121,29 @@ class Decoder(srd.Decoder):
         self.putc(data)
         self.state = None
 
-    def handle_read(self, data):
-        if self.cmdstate == 1:
-            self.emit_cmd_byte()
-            self.addr = 0
-        elif self.cmdstate == 2:
-            self.emit_addr_bytes(pdata)
-        elif self.cmdstate == 3:
-            self.emit_addr_bytes(pdata)
+    def handle_read(self, pdata, ann_class):
+        self.emit_addr_bytes(pdata)
+        if self.cmdstate == 3:
+            self.emit_cmd_end([ann_class, self.cmd_ann_list()])
+        self.cmdstate += 1
+
+    def handle_array(self, pdata, ann_class, digits):
+        # Address, values of a fixed number of hex digits, 0x00 at the end.
+        self.emit_addr_bytes(pdata)
+        if self.cmdstate > 3:
+            nibble = (self.cmdstate - 4) % digits
+            if nibble == 0:
+                if pdata == 0x00:
+                    # Null terminated list
+                    self.emit_cmd_end([ann_class, self.cmd_ann_list()])
+                    return
+                self.ss_field = self.ss
+                self.value = 0
+            self.value = (self.value << 4) | int(chr(pdata), 16)
+            if nibble == digits - 1:
+                self.es_field = self.es
+                s = '0x%0*X' % (digits, self.value)
+                self.putf([Ann.FIELD, ['Value ' + s, s]])
         self.cmdstate += 1
 
     def handle_set_common(self, pdata):
@@ -166,6 +185,7 @@ class Decoder(srd.Decoder):
                 self.es_field = self.es
                 self.putf([Ann.FIELD, self.cmd_ann_list()])
                 self.checksum = 0xA0 + 0x02
+                self.page = [0, 0]
             else:
                 self.putx([Ann.WARN, ['Illegal second byte for page change',
                                       'Illegal byte']])
@@ -180,41 +200,37 @@ class Decoder(srd.Decoder):
             self.es_field = self.es
             if self.page[0] == self.page [1] == 0xFF:
                 # Soft reset trigger
-                self.putf(Ann.WARN, ['Soft reset', 'Reset'])
+                self.putf([Ann.WARN, ['Soft reset', 'Reset']])
             else:
-                page = chr(self.page[0]) + chr(self.page[1])
-                self.putf(Ann.FIELD, ['Page index: 0x%s' % page,
-                                      'Page: 0x%s' % page, '0x%s' % page])
+                page = '%02X%02X' % tuple(self.page)
+                self.putf([Ann.FIELD, ['Page index: 0x%s' % page,
+                                       'Page: 0x%s' % page, '0x%s' % page]])
         elif self.cmdstate == 5:
             self.checksum += pdata
             if (self.checksum & 0xFF) != 0:
                 self.putx([Ann.WARN, ['Checksum error', 'Error', 'ERR']])
             else:
                 self.putx([Ann.FIELD, ['Checksum OK', 'OK']])
-            self.emit_cmd_end(Ann.PAGE)
+            self.emit_cmd_end([Ann.PAGE, self.cmd_ann_list()])
         self.cmdstate += 1
 
     # Value reads: command byte, address high nibble, address low nibble
 
     # Get byte value
     def handle_gbv(self, pdata):
-        self.handle_read(pdata)
-        self.emit_cmd_end([Ann.GBV, self.cmd_ann_list()])
+        self.handle_read(pdata, Ann.GBV)
 
     # Get word value
     def handle_gwv(self, pdata):
-        self.handle_read(pdata)
-        self.emit_cmd_end([Ann.GWV, self.cmd_ann_list()])
+        self.handle_read(pdata, Ann.GWV)
 
     # Get string value
     def handle_gsv(self, pdata):
-        self.handle_read(pdata)
-        self.emit_cmd_end([Ann.GSV, self.cmd_ann_list()])
+        self.handle_read(pdata, Ann.GSV)
 
     # Get label value
     def handle_glv(self, pdata):
-        self.handle_read(pdata)
-        self.emit_cmd_end([Ann.GLV, self.cmd_ann_list()])
+        self.handle_read(pdata, Ann.GLV)
 
     # Get RPC buffer
     def handle_grpc(self, pdata):
@@ -226,21 +242,19 @@ class Decoder(srd.Decoder):
             self.es_field = self.es
             self.putf([Ann.FIELD, ['RPC flag: 0x%02X' % self.flags]])
             self.emit_cmd_end([Ann.GRPC, self.cmd_ann_list()])
+        self.cmdstate += 1
 
     # Get byte value array
     def handle_gbva(self, pdata):
-        self.handle_read(pdata)
-        self.emit_cmd_end([Ann.GBVA, self.cmd_ann_list()])
+        self.handle_read(pdata, Ann.GBVA)
 
     # Get word value array
     def handle_gwva(self, pdata):
-        self.handle_read(pdata)
-        self.emit_cmd_end([Ann.GWVA, self.cmd_ann_list()])
+        self.handle_read(pdata, Ann.GWVA)
 
     # Get color variable
     def handle_gcv(self, pdata):
-        self.handle_read(pdata)
-        self.emit_cmd_end([Ann.GCV, self.cmd_ann_list()])
+        self.handle_read(pdata, Ann.GCV)
 
     # Value setters: command byte, address high nibble, address low nibble, data bytes
 
@@ -281,61 +295,11 @@ class Decoder(srd.Decoder):
 
     # Set byte value array
     def handle_sbva(self, pdata):
-        nibble = (self.cmdstate - 3) % 2
-        if self.cmdstate == 2:
-            self.addr = int(chr(pdata), 16) << 4
-            self.ss_field = self.ss
-            self.putx([Ann.BIT, ['Address high nibble: %c' % pdata,
-                 'Addr high 0x%c' % pdata, '0x%c' % pdata]])
-        elif self.cmdstate == 3:
-            self.addr += int(chr(pdata), 16)
-            self.es_field = self.ss
-            self.putx([Ann.BIT, ['Address low nibble: %c' % pdata,
-                 'Addr low 0x%c' % pdata, '0x%c' % pdata]])
-            self.putf([Ann.FIELD, ['Address: 0x%02X' % self.addr,
-                'Addr: 0x%02X' % self.addr, '0x%02X' % self.addr]])
-        elif stage == 2:
-            if pdata == 0x00:
-                # Null terminated list
-                self.emit_cmd_end([Ann.SBVA, self.cmd_ann_list()])
-                return
-            self.value = int(chr(pdata), 16) << 4
-        else:
-            self.value += int(chr(pdata), 16)
-            self.es_field = self.es
-            self.putf([Ann.FIELD, ['Value 0x%02X' % self.value,
-                                   '0x%02X' % self.value]])
-        self.cmdstate += 1
+        self.handle_array(pdata, Ann.SBVA, 2)
 
     # Set word value array
     def handle_swva(self, pdata):
-        nibble = (self.cmdstate - 3) % 4
-        if self.cmdstate == 2:
-            self.addr = int(chr(pdata), 16) << 4
-            self.ss_field = self.ss
-            self.putx([Ann.BIT, ['Address high nibble: %c' % pdata,
-                  'Addr high 0x%c' % pdata, '0x%c' % pdata]])
-        elif self.cmdstate == 3:
-            self.addr += int(chr(pdata), 16)
-            self.es_field = self.ss
-            self.putx([Ann.BIT, ['Address low nibble: %c' % pdata,
-                 'Addr low 0x%c' % pdata, '0x%c' % pdata]])
-            self.putf([Ann.FIELD, ['Address: 0x%02X' % self.addr,
-                 'Addr: 0x%02X' % self.addr, '0x%02X' % self.addr]])
-            self.value = 0
-        else:
-            self.value += int(chr(pdata), 16) << 12 - (4 * nibble)
-            if nibble == 0:
-                if pdata == 0x00:
-                    # Null terminated list
-                    self.emit_cmd_end([Ann.SWVA, self.cmd_ann_list()])
-                    return
-                self.ss_field = self.ss
-            if nibble == 3:
-                self.es_field = self.es
-                self.putf([Ann.FIELD, ['Value 0x%04X' % self.value,
-                                       '0x%04X' % self.value]])
-                self.cmdstate += 1
+        self.handle_array(pdata, Ann.SWVA, 4)
 
     # Set color variable
     def handle_scv(self, pdata):
@@ -345,29 +309,25 @@ class Decoder(srd.Decoder):
 
     # RPC trigger
     def handle_rpc(self, pdata):
-        self.handle_read(pdata)
-        self.emit_cmd_end([Ann.RPC, self.cmd_ann_list()])
+        self.handle_read(pdata, Ann.RPC)
 
     # Drawing
 
     # Decode pair of (x,y) 16bit coordinates
     def decode_coords(self, pdata):
         if self.cmdstate == 1:
-            self.coords[0] = 0
-            self.coords[1] = 0
-            self.coords[2] = 0
-            self.coords[3] = 0
-        if self.cmdstate < 18:
+            self.coords = [0, 0, 0, 0]
+        elif self.cmdstate < 18:
             # Coordinates
-            nibble = (self.cmdstate - 1) % 4
-            i = (self.cmdstate - 1) / 4
+            nibble = (self.cmdstate - 2) % 4
+            i = (self.cmdstate - 2) // 4
             self.coords[i] += int(chr(pdata), 16) << 12 - (4 * nibble)
             if nibble == 0:
                 self.ss_field = self.ss
             elif nibble == 3:
                 self.es_field = self.es
-                self.putf([Ann.FIELD, ['Coordinate 0x%04X' % self.coords[i]],
-                                      ['0x%04X' % self.coords[i]]])
+                self.putf([Ann.FIELD, ['Coordinate 0x%04X' % self.coords[i],
+                                       '0x%04X' % self.coords[i]]])
 
     # TODO: There are actually two protocol revisions for drawing.
     # Both use 4 bytes for 16bit x and y pairs for start and end.
@@ -376,7 +336,7 @@ class Decoder(srd.Decoder):
 
     # Draw line
     def handle_line(self, pdata):
-        decode_coords(pdata)
+        self.decode_coords(pdata)
         if self.cmdstate == 18:
             self.es_cmd = self.es
             self.putc([Ann.LINE, self.cmd_ann_list()])
@@ -386,7 +346,7 @@ class Decoder(srd.Decoder):
 
     # Draw rectange
     def handle_rect(self, pdata):
-        decode_coords(pdata)
+        self.decode_coords(pdata)
         if self.cmdstate == 18:
             self.es_cmd = self.es
             self.putc([Ann.RECT, self.cmd_ann_list()])
@@ -396,7 +356,7 @@ class Decoder(srd.Decoder):
 
     # Draw filled rectangle
     def handle_frect(self, pdata):
-        decode_coords(pdata)
+        self.decode_coords(pdata)
         if self.cmdstate == 18:
             self.es_cmd = self.es
             self.putc([Ann.FRECT, self.cmd_ann_list()])
@@ -412,14 +372,14 @@ class Decoder(srd.Decoder):
 
     # Replies
     def handle_gbvr(self, pdata):
-        self.emit_add_bytes(pdata)
+        self.emit_addr_bytes(pdata)
         if self.cmdstate == 4:
             self.ss_field = self.ss
             self.value = int(chr(pdata), 16) << 4
-            self.putx([Ann.BIT, ['High nibble 0x%s' % pdata, '0x%s' % pdata]])
+            self.putx([Ann.BIT, ['High nibble 0x%c' % pdata, '0x%c' % pdata]])
         elif self.cmdstate == 5:
             self.value += int(chr(pdata), 16)
-            self.putx([Ann.BIT, ['Low nibble 0x%s' % pdata, '0x%s' % pdata]])
+            self.putx([Ann.BIT, ['Low nibble 0x%c' % pdata, '0x%c' % pdata]])
             self.es_field = self.es
             self.putf([Ann.FIELD, ['Value: 0x%02X' % self.value,
                                    '0x%02X' % self.value]])
@@ -427,18 +387,18 @@ class Decoder(srd.Decoder):
         self.cmdstate += 1
 
     def handle_gwvr(self, pdata):
-        self.emit_add_bytes(pdata)
+        self.emit_addr_bytes(pdata)
         if self.cmdstate > 3:
-            nibble = self.cmdstate - 3
+            nibble = self.cmdstate - 4
             if nibble == 0:
                 self.value = 0
                 self.ss_field = self.ss
             self.value += int(chr(pdata), 16) << 12 - (4 * nibble)
-            self.putx([Ann.BIT, ['0x%s' % pdata]])
+            self.putx([Ann.BIT, ['0x%c' % pdata]])
             if nibble == 3:
-                self.putf([Ann.FIELD, ['Value: 0x%04x' % self.value,
+                self.es_field = self.es
+                self.putf([Ann.FIELD, ['Value: 0x%04X' % self.value,
                                        '0x%04X' % self.value]])
-                self.es_cmd = self.ss
                 self.emit_cmd_end([Ann.GWVR, self.cmd_ann_list()])
         self.cmdstate += 1
 
@@ -449,20 +409,20 @@ class Decoder(srd.Decoder):
         self.handle_string(pdata, Ann.GLVR)
 
     def handle_grpcr(self, pdata):
-        self.handle_addr(pdata)
+        self.emit_addr_bytes(pdata)
         if self.cmdstate > 3:
-            nibble = (self.cmdstate - 3) % 2
+            nibble = (self.cmdstate - 4) % 2
             if nibble == 0:
                 if pdata == 0x00:
                     self.emit_cmd_end([Ann.GRPCR, self.cmd_ann_list()])
                     return
                 self.value = int(chr(pdata), 16) << 4
                 self.ss_field = self.ss
-                self.putx([Ann.BIT, ['0x%s' % pdata]])
-            if nibble == 2:
+                self.putx([Ann.BIT, ['0x%c' % pdata]])
+            if nibble == 1:
                 self.value += int(chr(pdata), 16)
                 self.es_field = self.es
-                self.putx([Ann.BIT, ['0x%s' % pdata]])
+                self.putx([Ann.BIT, ['0x%c' % pdata]])
                 self.putf([Ann.FIELD, ['0x%02X' % self.value]])
         self.cmdstate += 1
 
@@ -483,14 +443,10 @@ class Decoder(srd.Decoder):
         self.handle_set_common(pdata)
         if self.cmdstate == 4:
             self.ss_field = self.ss
-            self.value = (pdata - 0x30) << 4
-        elif self.cmdstate == 5:
-            self.value += (pdata - 0x30)
-            self.value = self.value << 8
-        elif self.cmdstate == 6:
-            self.value += (pdata - 0x30) << 4
-        elif self.cmdstate == 7:
-            self.value += (pdata - 0x30)
+            self.value = int(chr(pdata), 16)
+        elif self.cmdstate in (5, 6, 7):
+            self.value = (self.value << 4) | int(chr(pdata), 16)
+        if self.cmdstate == 7:
             self.es_field = self.es
             self.putf([Ann.FIELD, ['Value: 0x%04x' % self.value,
                 'Val: 0x%04x' % self.value, '0x%04x' % self.value]])
@@ -502,11 +458,10 @@ class Decoder(srd.Decoder):
         self.handle_string(pdata, Ann.SSVR)
 
     def handle_rpcr(self, pdata):
-        self.handle_read(pdata)
-        self.emit_cmd_end([Ann.RPCR, self.cmd_ann_list()])
+        self.handle_read(pdata, Ann.RPCR)
 
     def handle_liner(self, pdata):
-        decode_coords(pdata)
+        self.decode_coords(pdata)
         if self.cmdstate == 18:
             self.es_cmd = self.es
             self.putc([Ann.LINER, self.cmd_ann_list()])
@@ -515,7 +470,7 @@ class Decoder(srd.Decoder):
         self.cmdstate += 1
 
     def handle_rectr(self, pdata):
-        decode_coords(pdata)
+        self.decode_coords(pdata)
         if self.cmdstate == 18:
             self.es_cmd = self.es
             self.putc([Ann.RECTR, self.cmd_ann_list()])
@@ -524,7 +479,7 @@ class Decoder(srd.Decoder):
         self.cmdstate += 1
 
     def handle_frectr(self, pdata):
-        decode_coords(pdata)
+        self.decode_coords(pdata)
         if self.cmdstate == 18:
             self.es_cmd = self.es
             self.putc([Ann.FRECTR, self.cmd_ann_list()])
@@ -538,127 +493,27 @@ class Decoder(srd.Decoder):
         self.state = None
 
     def handle_gbvar(self, pdata):
-        nibble = (self.cmdstate - 3) % 2
-        if self.cmdstate == 2:
-            self.addr = int(chr(pdata), 16) << 4
-            self.ss_field = self.ss
-            self.putx([Ann.BIT, ['Address high nibble: %c' % pdata,
-                 'Addr high 0x%c' % pdata, '0x%c' % pdata]])
-        elif self.cmdstate == 3:
-            self.addr += int(chr(pdata), 16)
-            self.es_field = self.ss
-            self.putx([Ann.BIT, ['Address low nibble: %c' % pdata,
-                 'Addr low 0x%c' % pdata, '0x%c' % pdata]])
-            self.putf([Ann.FIELD, ['Address: 0x%02X' % self.addr,
-                'Addr: 0x%02X' % self.addr, '0x%02X' % self.addr]])
-        elif stage == 2:
-            if pdata == 0x00:
-                # Null terminated list
-                self.emit_cmd_end([Ann.GBVAR, self.cmd_ann_list()])
-                return
-            self.value = int(chr(pdata), 16) << 4
-        else:
-            self.value += int(chr(pdata), 16)
-            self.es_field = self.es
-            self.putf([Ann.FIELD, ['Value 0x%02X' % self.value,
-                                   '0x%02X' % self.value]])
-        self.cmdstate += 1
+        self.handle_array(pdata, Ann.GBVAR, 2)
 
     def handle_gwvar(self, pdata):
-        nibble = (self.cmdstate - 3) % 4
-        if self.cmdstate == 2:
-            self.addr = int(chr(pdata), 16) << 4
-            self.ss_field = self.ss
-            self.putx([Ann.BIT, ['Address high nibble: %c' % pdata,
-                  'Addr high 0x%c' % pdata, '0x%c' % pdata]])
-        elif self.cmdstate == 3:
-            self.addr += int(chr(pdata), 16)
-            self.es_field = self.ss
-            self.putx([Ann.BIT, ['Address low nibble: %c' % pdata,
-                 'Addr low 0x%c' % pdata, '0x%c' % pdata]])
-            self.putf([Ann.FIELD, ['Address: 0x%02X' % self.addr,
-                 'Addr: 0x%02X' % self.addr, '0x%02X' % self.addr]])
-            self.value = 0
-        else:
-            self.value += int(chr(pdata), 16) << 12 - (4 * nibble)
-            if nibble == 0:
-                if pdata == 0x00:
-                    # Null terminated list
-                    self.emit_cmd_end([Ann.GWVAR, self.cmd_ann_list()])
-                    return
-                self.ss_field = self.ss
-            if nibble == 3:
-                self.es_field = self.es
-                self.putf([Ann.FIELD, ['Value 0x%04X' % self.value,
-                                       '0x%04X' % self.value]])
-                self.cmdstate += 1
+        self.handle_array(pdata, Ann.GWVAR, 4)
 
     # Get byte variable array reply
     def handle_sbvar(self, pdata):
-        nibble = (self.cmdstate - 3) % 2
-        if self.cmdstate == 2:
-            self.addr = int(chr(pdata), 16) << 4
-            self.ss_field = self.ss
-            self.putx([Ann.BIT, ['Address high nibble: %c' % pdata,
-                 'Addr high 0x%c' % pdata, '0x%c' % pdata]])
-        elif self.cmdstate == 3:
-            self.addr += int(chr(pdata), 16)
-            self.es_field = self.ss
-            self.putx([Ann.BIT, ['Address low nibble: %c' % pdata,
-                 'Addr low 0x%c' % pdata, '0x%c' % pdata]])
-            self.putf([Ann.FIELD, ['Address: 0x%02X' % self.addr,
-                'Addr: 0x%02X' % self.addr, '0x%02X' % self.addr]])
-        elif stage == 2:
-            if pdata == 0x00:
-                # Null terminated list
-                self.emit_cmd_end([Ann.SBVAR, self.cmd_ann_list()])
-                return
-            self.value = int(chr(pdata), 16) << 4
-        else:
-            self.value += int(chr(pdata), 16)
-            self.es_field = self.es
-            self.putf([Ann.FIELD, ['Value 0x%02X' % self.value,
-                                   '0x%02X' % self.value]])
-        self.cmdstate += 1
+        self.handle_array(pdata, Ann.SBVAR, 2)
 
     # Set word variable array reply
     def handle_swvar(self, pdata):
-        nibble = (self.cmdstate - 3) % 4
-        if self.cmdstate == 2:
-            self.addr = int(chr(pdata), 16) << 4
-            self.ss_field = self.ss
-            self.putx([Ann.BIT, ['Address high nibble: %c' % pdata,
-                  'Addr high 0x%c' % pdata, '0x%c' % pdata]])
-        elif self.cmdstate == 3:
-            self.addr += int(chr(pdata), 16)
-            self.es_field = self.ss
-            self.putx([Ann.BIT, ['Address low nibble: %c' % pdata,
-                 'Addr low 0x%c' % pdata, '0x%c' % pdata]])
-            self.putf([Ann.FIELD, ['Address: 0x%02X' % self.addr,
-                 'Addr: 0x%02X' % self.addr, '0x%02X' % self.addr]])
-            self.value = 0
-        else:
-            self.value += int(chr(pdata), 16) << 12 - (4 * nibble)
-            if nibble == 0:
-                if pdata == 0x00:
-                    # Null terminated list
-                    self.emit_cmd_end([Ann.SWVAR, self.cmd_ann_list()])
-                    return
-                self.ss_field = self.ss
-            if nibble == 3:
-                self.es_field = self.es
-                self.putf([Ann.FIELD, ['Value 0x%04X' % self.value,
-                                       '0x%04X' % self.value]])
-                self.cmdstate += 1
+        self.handle_array(pdata, Ann.SWVAR, 4)
 
     def handle_gcvr(self, pdata):
         if self.cmdstate == 8:
-            self.emit_not_implemented([Ann.SCV, self.cmd_ann_list()])
+            self.emit_not_implemented([Ann.GCVR, self.cmd_ann_list()])
         self.cmdstate += 1
 
     def handle_scvr(self, pdata):
         if self.cmdstate == 8:
-            self.emit_not_implemented([Ann.SCV, self.cmd_ann_list()])
+            self.emit_not_implemented([Ann.SCVR, self.cmd_ann_list()])
         self.cmdstate += 1
 
     # ACK & NACK
@@ -694,6 +549,9 @@ class Decoder(srd.Decoder):
                 self.emit_cmd_byte()
                 self.cmdstate = 1
             self.cmd_handlers[self.state](pdata[0])
+        except ValueError:
+            self.putx([Ann.WARN, ['Invalid hex digit: 0x%02x' % pdata[0]]])
+            self.state = None
         except KeyError:
             self.putx([Ann.WARN, ['Unknown command: 0x%02x' % pdata[0]]])
             self.state = None

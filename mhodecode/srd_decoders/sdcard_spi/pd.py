@@ -3,6 +3,10 @@
 ##
 ## Copyright (C) 2012-2020 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: every block read and
+## write of a capture is decoded, the CSD is read after its start token, and
+## R1 bits 5 and 6 are shown.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -64,11 +68,16 @@ class Decoder(srd.Decoder):
         self.blocklen = 0
         self.read_buf = []
         self.cmd_str = ''
-        self.is_cmd24 = False
-        self.cmd24_start_token_found = False
+        self.clear_data_state()
+        self.busy_first_byte = False
+
+    def clear_data_state(self):
+        self.read_buf = []
+        self.is_cmd9 = False
         self.is_cmd17 = False
         self.cmd17_start_token_found = False
-        self.busy_first_byte = False
+        self.is_cmd24 = False
+        self.cmd24_start_token_found = False
 
     def start(self):
         self.out_ann = self.register(srd.OUTPUT_ANN)
@@ -160,13 +169,14 @@ class Decoder(srd.Decoder):
             self.putb([Ann.BIT_WARNING, ['End bit: %d (Warning: Must be 1!)' % bit]])
 
         # Handle command.
-        if cmd in (0, 1, 9, 16, 17, 24, 41, 49, 55, 59):
+        self.clear_data_state()
+        if cmd in ((41,) if self.is_acmd else (0, 1, 9, 16, 17, 24, 49, 55, 59)):
             self.state = 'HANDLE CMD%d' % cmd
             self.cmd_str = '%s%d (%s)' % (s, cmd, self.cmd_name(cmd))
         else:
             self.state = 'HANDLE CMD999'
             a = '%s%d: %02x %02x %02x %02x %02x %02x' % ((s, cmd) + tuple(t))
-            self.putx([cmd, [a]])
+            self.putx([cmd + (Ann.ACMD0 if self.is_acmd else Ann.CMD0), [a]])
 
     def handle_cmd0(self):
         # CMD0: GO_IDLE_STATE
@@ -185,20 +195,8 @@ class Decoder(srd.Decoder):
     def handle_cmd9(self):
         # CMD9: SEND_CSD (128 bits / 16 bytes)
         self.putc(Ann.CMD9, 'Ask card to send its card specific data (CSD)')
-        if len(self.read_buf) == 0:
-            self.ss_cmd = self.ss
-        self.read_buf.append(self.miso)
-        # FIXME
-        ### if len(self.read_buf) < 16:
-        if len(self.read_buf) < 16 + 4:
-            return
-        self.es_cmd = self.es
-        self.read_buf = self.read_buf[4:] # TODO: Document or redo.
-        self.putx([Ann.CMD9, ['CSD: %s' % self.read_buf]])
-        # TODO: Decode all bits.
-        self.read_buf = []
-        ### self.state = 'GET RESPONSE R1'
-        self.state = 'IDLE'
+        self.is_cmd9 = True
+        self.state = 'GET RESPONSE R1'
 
     def handle_cmd10(self):
         # CMD10: SEND_CID (128 bits / 16 bytes)
@@ -252,6 +250,9 @@ class Decoder(srd.Decoder):
         self.state = 'GET RESPONSE R1'
 
     def handle_cmd999(self):
+        self.state = 'GET RESPONSE R1'
+
+    def handle_acmd999(self):
         self.state = 'GET RESPONSE R1'
 
     def handle_cid_register(self):
@@ -324,16 +325,21 @@ class Decoder(srd.Decoder):
         putbit(4, ['%srror in the sequence of erase commands' % s])
 
         # Bit 5: 'Address error' bit
-        s = 'M' if (res & (1 << 4)) else 'No m'
+        s = 'M' if (res & (1 << 5)) else 'No m'
         putbit(5, ['%sisaligned address used in command' % s])
 
         # Bit 6: 'Parameter error' bit
-        s = '' if (res & (1 << 4)) else 'not '
+        s = '' if (res & (1 << 6)) else 'not '
         putbit(6, ['Command argument %soutside allowed range' % s])
 
         # Bit 7: Always set to 0
         putbit(7, ['Bit 7 (always 0)'])
 
+        # No data block follows an error.
+        if res & 0x7c:
+            self.clear_data_state()
+        if self.is_cmd9:
+            self.state = 'HANDLE DATA BLOCK CMD9'
         if self.is_cmd17:
             self.state = 'HANDLE DATA BLOCK CMD17'
         if self.is_cmd24:
@@ -358,6 +364,26 @@ class Decoder(srd.Decoder):
     def handle_response_r7(self, res):
         # TODO
         pass
+
+    def handle_data_cmd9(self, miso):
+        # CMD9 returns one byte R1, then the CSD as a data block: some bytes
+        # 0xff, a Start Block (single byte 0xfe), 16 bytes, 2 bytes of CRC.
+        if self.is_cmd9 != 'data':
+            if miso == 0xfe:
+                self.put(self.ss, self.es, self.out_ann, [Ann.CMD9, ['Start Block']])
+                self.is_cmd9 = 'data'
+            return
+        if len(self.read_buf) == 0:
+            self.ss_data = self.ss
+        self.read_buf.append(miso)
+        if len(self.read_buf) == 16:
+            self.put(self.ss_data, self.es, self.out_ann, [Ann.CMD9, ['CSD: %s' % self.read_buf]])
+        elif len(self.read_buf) == 17:
+            self.ss_crc = self.ss
+        elif len(self.read_buf) == 18:
+            self.put(self.ss_crc, self.es, self.out_ann, [Ann.CMD9, ['CRC']])
+            self.clear_data_state()
+            self.state = 'IDLE'
 
     def handle_data_cmd17(self, miso):
         # CMD17 returns one byte R1, then some bytes 0xff, then a Start Block
@@ -384,6 +410,7 @@ class Decoder(srd.Decoder):
                 self.es_crc = self.es
                 # TODO: Check CRC.
                 self.put(self.ss_crc, self.es_crc, self.out_ann, [Ann.CMD17, ['CRC']])
+                self.clear_data_state()
                 self.state = 'IDLE'
         elif miso == 0xfe:
             self.put(self.ss, self.es, self.out_ann, [Ann.CMD17, ['Start Block']])
@@ -451,16 +478,16 @@ class Decoder(srd.Decoder):
     def wait_while_busy(self, miso):
         if miso != 0x00:
             cls = Ann.CMD24 if self.is_cmd24 else None
-            if cls is not None:
+            if cls is not None and not self.busy_first_byte:
                 self.put(self.ss_busy, self.es_busy, self.out_ann, [cls, ['Card is busy']])
+            self.clear_data_state()
             self.state = 'IDLE'
             return
         else:
             if self.busy_first_byte:
                 self.ss_busy = self.ss
                 self.busy_first_byte = False
-            else:
-                self.es_busy = self.es
+            self.es_busy = self.es
 
     def decode(self, ss, es, data):
         ptype, mosi, miso = data
@@ -508,6 +535,8 @@ class Decoder(srd.Decoder):
             handle_response = getattr(self, s)
             self.state = 'IDLE'
             handle_response(miso)
+        elif self.state == 'HANDLE DATA BLOCK CMD9':
+            self.handle_data_cmd9(miso)
         elif self.state == 'HANDLE DATA BLOCK CMD17':
             self.handle_data_cmd17(miso)
         elif self.state == 'HANDLE DATA BLOCK CMD24':

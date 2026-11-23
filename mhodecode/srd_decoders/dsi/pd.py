@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2015 Jeremy Swanson <jeremy@rakocontrols.com>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the idle level before
+## the first frame is 1 for both polarities.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -61,7 +64,8 @@ class Decoder(srd.Decoder):
 
     def start(self):
         self.out_ann = self.register(srd.OUTPUT_ANN)
-        self.old_dsi = 1 if self.options['polarity'] == 'active-low' else 0
+        # decode() inverts the active-high line, so idle is always 1.
+        self.old_dsi = 1
 
     def metadata(self, key, value):
         if key == srd.SRD_CONF_SAMPLERATE:

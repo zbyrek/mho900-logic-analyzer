@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2013 Bert Vermeulen <bert@biot.com>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the memory address
+## pointer is tracked; alarm thresholds are shown at their own bytes.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 3 of the License, or
@@ -45,10 +48,12 @@ class Decoder(srd.Decoder):
         self.reset()
 
     def reset(self):
-        # Received data items, used as an index into samplenum/data
+        # Register of the last data byte, the memory address pointer - 1
         self.cnt = -1
-        # Start/end sample numbers per data item
-        self.sn = []
+        # The next DATA WRITE sets the memory address pointer
+        self.set_pointer = False
+        # Start/end sample numbers per register
+        self.sn = {}
         # Multi-byte structure buffer
         self.buf = []
         # Filled in by address 0x7f in low memory
@@ -116,23 +121,42 @@ class Decoder(srd.Decoder):
     def decode(self, ss, es, data):
         cmd, data = data
 
+        if cmd == 'ADDRESS WRITE':
+            self.set_pointer = True
+            return
+        if cmd == 'DATA WRITE':
+            self.buf.clear()
+            if self.set_pointer:
+                self.set_pointer = False
+                self.cnt = data - 1
+            else:
+                self.cnt += 1
+                if self.cnt == 0x7f:
+                    self.page_select([data])
+            return
         # We only care about actual data bytes that are read (for now).
         if cmd != 'DATA READ':
             return
 
         self.cnt += 1
-        self.sn.append([ss, es])
+        self.sn[self.cnt] = [ss, es]
 
         self.buf.append(data)
         if self.cnt < 0x80:
-            if self.cnt in self.MAP_LOWER_MEMORY:
-                self.MAP_LOWER_MEMORY[self.cnt](self.buf)
-                self.buf.clear()
+            self.handle_fields(self.MAP_LOWER_MEMORY, -1)
         elif self.cnt < 0x0100 and self.cur_highmem_page == 0x01:
             # Serial ID memory map
-            if self.cnt in self.MAP_HIGH_TABLE_1:
-                self.MAP_HIGH_TABLE_1[self.cnt](self.buf)
-                self.buf.clear()
+            self.handle_fields(self.MAP_HIGH_TABLE_1, 127)
+
+    # Call the handler of a field that ends here and was read completely.
+    def handle_fields(self, handlers, before):
+        if self.cnt not in handlers:
+            return
+        start = max([k for k in handlers if k < self.cnt], default=before) + 1
+        if len(self.buf) > self.cnt - start:
+            self.buf = self.buf[-(self.cnt - start + 1):]
+            handlers[self.cnt](self.buf)
+        self.buf.clear()
 
     # Annotation helper
     def annotate(self, key, value, start_cnt=None, end_cnt=None):
@@ -194,7 +218,7 @@ class Decoder(srd.Decoder):
             self.annotate("Signal Conditioner Control", "%.2x" % data[0])
 
     def alarm_warnings(self, data):
-        cnt_idx = self.cnt - len(data)
+        cnt_idx = self.cnt - len(data) + 1
         idx = 0
         while idx < 56:
             if idx == 8:
@@ -213,7 +237,7 @@ class Decoder(srd.Decoder):
                     self.annotate(name, self.to_power(value),
                             cnt_idx + idx, cnt_idx + idx + 1)
                 else:
-                    self.annotate(name, "%d" % name, value, cnt_idx + idx,
+                    self.annotate(name, "%d" % value, cnt_idx + idx,
                             cnt_idx + idx + 1)
             idx += 2
 
@@ -386,7 +410,7 @@ class Decoder(srd.Decoder):
         self.annotate("Device technology", ', '.join(out))
 
     def vendor(self, data):
-        name = bytes(data).strip().decode('ascii').strip('\x00')
+        name = bytes(data).strip().decode('ascii', 'replace').strip('\x00')
         if name:
             self.annotate("Vendor", name)
 
@@ -404,12 +428,12 @@ class Decoder(srd.Decoder):
             self.annotate("Vendor OUI", "%.2X-%.2X-%.2X" % tuple(data))
 
     def vendor_pn(self, data):
-        name = bytes(data).strip().decode('ascii').strip('\x00')
+        name = bytes(data).strip().decode('ascii', 'replace').strip('\x00')
         if name:
             self.annotate("Vendor part number", name)
 
     def vendor_rev(self, data):
-        name = bytes(data).strip().decode('ascii').strip('\x00')
+        name = bytes(data).strip().decode('ascii', 'replace').strip('\x00')
         if name:
             self.annotate("Vendor revision", name)
 
@@ -444,7 +468,7 @@ class Decoder(srd.Decoder):
                 "%.3f A" % value, self.cnt, self.cnt)
 
     def vendor_sn(self, data):
-        name = bytes(data).strip().decode('ascii').strip('\x00')
+        name = bytes(data).strip().decode('ascii', 'replace').strip('\x00')
         if name:
             self.annotate("Vendor serial number", name)
 
@@ -453,7 +477,7 @@ class Decoder(srd.Decoder):
         m = int(bytes(data[2:4]))
         d = int(bytes(data[4:6]))
         mnf = "%.4d-%.2d-%.2d" % (y, m, d)
-        lot = bytes(data[6:]).strip().decode('ascii').strip('\x00')
+        lot = bytes(data[6:]).strip().decode('ascii', 'replace').strip('\x00')
         if lot:
             mnf += " lot " + lot
         self.annotate("Manufacturing date", mnf)

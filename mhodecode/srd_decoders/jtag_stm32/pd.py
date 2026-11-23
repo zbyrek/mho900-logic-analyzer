@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2012-2015 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: an instruction stays for
+## all following DR scans, and APACC addresses are shown as numbers.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -125,7 +128,8 @@ def data_in(instruction, bits):
     data_hex = '0x%x' % int('0b' + data, 2)
     r = 'Read request' if (rnw == '1') else 'Write request'
     # reg = dp_reg[a] if (instruction == 'DPACC') else apb_ap_reg[a]
-    reg = dp_reg[a] if (instruction == 'DPACC') else a # TODO
+    # Which AP register it is depends on SELECT.APBANKSEL.
+    reg = dp_reg[a] if (instruction == 'DPACC') else '0x%x' % (int(a, 2) << 2)
     return 'New transaction: DATA: %s, A: %s, RnW: %s' % (data_hex, reg, r)
 
 # APACC/DPACC, when transferring data OUT:
@@ -233,6 +237,10 @@ class Decoder(srd.Decoder):
             val, self.samplenums = val
             self.samplenums.reverse()
 
+        # The instruction stays until the next one or a reset.
+        elif val == 'TEST-LOGIC-RESET':
+            self.state = 'IDLE'
+
         if cmd == 'IR TDI':
             # Switch to the state named after the instruction, or 'UNKNOWN'.
             # The STM32F10xxx has two serially connected JTAG TAPs, the
@@ -251,19 +259,15 @@ class Decoder(srd.Decoder):
                 return
             handle_reg = getattr(self, 'handle_reg_%s' % self.state.lower())
             handle_reg(cmd, val)
-            self.state = 'IDLE'
         elif self.state in ('IDCODE', 'ABORT', 'UNKNOWN'):
             # Here we're interested in outgoing bits (TDO).
             if cmd != 'DR TDO':
                 return
             handle_reg = getattr(self, 'handle_reg_%s' % self.state.lower())
             handle_reg(cmd, val)
-            self.state = 'IDLE'
         elif self.state in ('DPACC', 'APACC'):
             # Here we're interested in incoming and outgoing bits (TDI/TDO).
             if cmd not in ('DR TDI', 'DR TDO'):
                 return
             handle_reg = getattr(self, 'handle_reg_%s' % self.state.lower())
             handle_reg(cmd, val)
-            if cmd == 'DR TDO': # Assumes 'DR TDI' comes before 'DR TDO'.
-                self.state = 'IDLE'

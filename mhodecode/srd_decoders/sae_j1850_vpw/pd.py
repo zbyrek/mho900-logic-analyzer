@@ -4,6 +4,9 @@
 ## Copyright (C) 2016 Anthony Symons <antus@pcmhacking.net>
 ## Copyright (C) 2023 Gerhard Sittig <gerhard.sittig@gmx.net>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the PID of a mode 1
+## frame is the first data byte; it stopped the decoder.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -103,22 +106,19 @@ class Decoder(srd.Decoder):
         self.bits.clear()
         self.fields.clear()
 
-    def handle_databytes(self, fields, data):
+    def handle_databytes(self, ss, es, fields, data):
         # TODO Deep inspection of header fields and data values, including
         # checksum verification results.
         mode = fields.get('mode', None)
         if mode is None:
             return
         if mode == 1:
-            # An earlier implementation commented that for mode 1 the
-            # first data byte would be the PID. But example captures
-            # have no data bytes in packets for that mode. This position
-            # is taken by the checksum. Is this correct?
-            pid = data[0] if data else fields.get('csum', None)
-            if pid is None:
+            # The first data byte is the PID (SAE J1979, service 01).
+            if not data:
                 text = ['PID missing']
                 self.putg(ss, es, ANN_WARN, text)
             else:
+                pid, ss, es = data[0]
                 byte_text = '{:02x}'.format(pid)
                 self.putg(ss, es, ANN_M1_PID, [byte_text])
 
@@ -192,7 +192,7 @@ class Decoder(srd.Decoder):
             self.putg(ss_csum, es_csum, ANN_CSUM, [text])
         text = ['IFS', 'I'] if is_ifs else ['EOF', 'E']
         self.putg(ss, es, ANN_IFS, text)
-        self.handle_databytes(self.fields, data);
+        self.handle_databytes(ss, es, self.fields, data)
         self.invalidate_frame_details()
 
     def handle_unknown(self, ss, es):

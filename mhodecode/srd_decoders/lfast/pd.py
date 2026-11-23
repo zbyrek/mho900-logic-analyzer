@@ -3,6 +3,12 @@
 ##
 ## Copyright (C) 2020 Soeren Apel <soeren@apelpie.net>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: a frame ends with a
+## stop bit of 1 (NXP AN5134), which the decoder took for a sleep request.
+##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: frames with long runs of
+## equal bits are kept.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -116,7 +122,7 @@ class Decoder(srd.Decoder):
         ('header_cts', 'Clear To Send'),
         ('payload', 'Payload'),
         ('ctrl_data', 'Control Data'),
-        ('sleep', 'Sleep Bit'),
+        ('sleep', 'Stop bit'),
         ('warning', 'Warning'),
     )
     annotation_rows = (
@@ -139,6 +145,8 @@ class Decoder(srd.Decoder):
         self.bits = []
         self.payload = []
         self.payload_size = 0  # Expected number of bytes, as read from header
+        self.ss_frame = 0      # First edge of the frame
+        self.bit_total = 0     # Number of bits since then
         self.bit_len = 0       # Length of one bit time, in samples
         self.timeout = 0       # Desired timeout for next edge, in samples
         self.ch_type_id = 0    # ID of channel type
@@ -207,8 +215,6 @@ class Decoder(srd.Decoder):
             self.timeout = int(9.4 * self.bit_len)
 
     def handle_payload(self):
-        self.timeout = int((self.payload_size - len(self.payload)) * 8 * self.bit_len)
-
         if len(self.bits) == 1:
             self.ss_byte = self.ss_bit
             if self.ss_payload == 0:
@@ -240,14 +246,14 @@ class Decoder(srd.Decoder):
 
     def handle_sleepbit(self):
         if len(self.bits) == 0:
-            self.put_ann(self.ss_bit, self.es_bit, ann_sleepbit, ['No LVDS sleep mode request', 'No sleep', 'N'])
+            self.put_ann(self.ss_bit, self.es_bit, ann_sleepbit, ['Stop bit missing', 'No stop', 'N'])
         elif len(self.bits) > 1:
-            self.put_ann(self.ss_bit, self.es_bit, ann_warning, ['Expected only the sleep bit, got {} bits instead'.format(len(self.bits))])
+            self.put_ann(self.ss_bit, self.es_bit, ann_warning, ['Expected only the stop bit, got {} bits instead'.format(len(self.bits))])
         else:
             if self.bits[0] == 1:
-                self.put_ann(self.ss_bit, self.es_bit, ann_sleepbit, ['LVDS sleep mode request', 'Sleep', 'Y'])
+                self.put_ann(self.ss_bit, self.es_bit, ann_sleepbit, ['Stop bit', 'Stop', 'S'])
             else:
-                self.put_ann(self.ss_bit, self.es_bit, ann_sleepbit, ['No LVDS sleep mode request', 'No sleep', 'N'])
+                self.put_ann(self.ss_bit, self.es_bit, ann_sleepbit, ['Stop bit missing', 'No stop', 'N'])
 
         # We only send the payload out if this is an actual data transfer;
         # check the channel_types list for the meaning of the magic values
@@ -260,27 +266,24 @@ class Decoder(srd.Decoder):
             if self.timeout == 0:
                 rising_edge, = self.wait({0: 'e'})
             else:
-                rising_edge, = self.wait([{0: 'e'}, {'skip': self.timeout}])
+                skip = max(1, int(self.ss + self.timeout - self.samplenum))
+                rising_edge, = self.wait([{0: 'e'}, {'skip': skip}])
 
             # If this is the first edge, we only update ss
             if self.ss == 0:
-                self.ss = self.samplenum
+                self.ss = self.ss_frame = self.samplenum
                 # Let's set the timeout for the sync pattern as well
                 self.timeout = int(16.2 * self.prev_bit_len)
                 continue
 
             self.es = self.samplenum
 
-            # Check for the sleep bit if this is a timeout condition
-            if (len(self.matched) == 2) and self.matched[1]:
-                rising_edge = ~rising_edge
+            # Without an edge the level has not changed, so the bits have the
+            # current level.
+            timed_out = (len(self.matched) == 2) and self.matched[1] and not self.matched[0]
+            if timed_out:
+                rising_edge = 1 - rising_edge
                 if self.state == state_sync:
-                    self.reset()
-                    continue
-                elif self.state == state_sleepbit:
-                    self.ss_bit += self.bit_len
-                    self.es_bit = self.ss_bit + self.bit_len
-                    self.handle_sleepbit()
                     self.reset()
                     continue
 
@@ -294,7 +297,12 @@ class Decoder(srd.Decoder):
 
             # Determine number of bits covered by this edge
             bit_count = (self.es - self.ss) / self.bit_len
-            bit_count = int(decimal.Decimal(bit_count).to_integral_value())
+            if timed_out:
+                # Take the whole bits. The rest belongs to the next ones.
+                bit_count = int(bit_count)
+                self.es = self.ss + bit_count * self.bit_len
+            else:
+                bit_count = int(decimal.Decimal(bit_count).to_integral_value())
 
             if bit_count == 0:
                 self.put_ann(self.ss, self.es, ann_warning, ['Bit time too short'])
@@ -327,9 +335,8 @@ class Decoder(srd.Decoder):
 
             # Only update ss if we didn't just perform a reset
             if self.ss > 0:
-                self.ss = self.samplenum
-
-            # If we got here when a timeout occurred, we have processed all null
-            # bits that we could and should reset now to find the next packet
-            if (len(self.matched) == 2) and self.matched[1]:
-                self.reset()
+                self.ss = self.es
+                self.bit_total += bit_count
+                # One bit gives too coarse a bit length for long runs.
+                if not timed_out:
+                    self.bit_len = (self.es - self.ss_frame) / self.bit_total

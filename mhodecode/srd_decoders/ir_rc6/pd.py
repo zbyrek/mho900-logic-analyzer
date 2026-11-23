@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2019 Benedikt Otto <benedikt_o@web.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the header is shown
+## once.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -61,6 +64,7 @@ class Decoder(srd.Decoder):
         self.edges, self.deltas, self.bits = [], [], []
         self.state = 'IDLE'
         self.mode = 0
+        self.header_done = False
 
     def start(self):
         self.out_ann = self.register(srd.OUTPUT_ANN)
@@ -81,7 +85,7 @@ class Decoder(srd.Decoder):
         self.put(ss, es, self.out_ann, data)
 
     def handle_bit(self):
-        if len(self.bits) != 6:
+        if len(self.bits) != 6 or self.header_done:
             return
         if self.bits[0][2] == 8 and self.bits[0][3] == 1:
             self.putb(self.bits[0], [1, ['Synchronisation', 'Sync']])
@@ -94,6 +98,7 @@ class Decoder(srd.Decoder):
         self.mode = sum([self.bits[2 + i][3] << (2 - i) for i in range(3)])
         self.putbits(self.bits[2], self.bits[4], [3, ['Field: %d' % self.mode]])
         self.putb(self.bits[5], [4, ['Toggle: %d' % self.bits[5][3]]])
+        self.header_done = True
 
     def handle_package(self):
         # Sync and start bits have to be 1.
@@ -164,6 +169,7 @@ class Decoder(srd.Decoder):
                 self.state = 'SYNC'
                 num_edges = 0
                 self.bits = []
+                self.header_done = False
 
                 if self.options['polarity'] == 'auto':
                     value = 1

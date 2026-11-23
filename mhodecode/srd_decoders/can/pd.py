@@ -4,6 +4,11 @@
 ## Copyright (C) 2012-2013 Uwe Hermann <uwe@hermann-uwe.de>
 ## Copyright (C) 2019 Stephan Thiele <stephan.thiele@mailbox.org>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the data length of remote
+## frames and of classic frames with a DLC above 8, the CRC length of FD frames
+## with 16 data bytes, the stuff bit between data and CRC of FD frames, the
+## sample points after a change of the bitrate.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -98,6 +103,15 @@ class Decoder(srd.Decoder):
             self.bit_width = float(self.samplerate) / float(self.options['nominal_bitrate'])
             self.sample_point = (self.bit_width / 100.0) * self.options['sample_point']
 
+    # Number of data bytes in the current frame. Remote frames have none, and
+    # classic frames have at most 8, whatever a larger DLC says.
+    def data_length(self):
+        if self.fd:
+            return dlc2len(self.dlc)
+        if self.rtr_type == 'remote':
+            return 0
+        return min(self.dlc, 8)
+
     # Generic helper for CAN bit annotations.
     def putg(self, ss, es, data):
         left, right = int(self.sample_point), int(self.bit_width - self.sample_point)
@@ -147,6 +161,12 @@ class Decoder(srd.Decoder):
         self.dom_edge_snum = self.samplenum
         self.dom_edge_bcount = self.curbit
 
+    # The bitrate of FD frames changes at the sample point of the BRS bit and
+    # of the CRC delimiter: count the following bits from there.
+    def resync_at_sample_point(self):
+        self.dom_edge_snum = self.samplenum - self.sample_point
+        self.dom_edge_bcount = self.curbit
+
     # Determine the position of the next desired bit's sample point.
     def get_sample_point(self, bitnum):
         samplenum = self.dom_edge_snum
@@ -159,6 +179,11 @@ class Decoder(srd.Decoder):
         # After 5 identical bits, a stuff bit of opposite value is added.
         # But not in the CRC delimiter, ACK, and end of frame fields.
         if len(self.bits) > self.last_databit + 17:
+            return False
+        # The CRC field of FD frames has stuff bits at fixed positions, which
+        # are part of crc_len. The first of them directly follows the data, and
+        # no other stuff bit precedes it.
+        if self.fd and len(self.bits) > self.last_databit + 1:
             return False
         last_6_bits = self.rawbits[-6:]
         if last_6_bits not in ([0, 0, 0, 0, 0, 1], [1, 1, 1, 1, 1, 0]):
@@ -186,7 +211,7 @@ class Decoder(srd.Decoder):
         if bitnum == (self.last_databit + 1):
             self.ss_block = self.samplenum
             if self.fd:
-                if dlc2len(self.dlc) < 16:
+                if dlc2len(self.dlc) <= 16:
                     self.crc_len = 27 # 17 + SBC + stuff bits
                 else:
                     self.crc_len = 32 # 21 + SBC + stuff bits
@@ -196,7 +221,7 @@ class Decoder(srd.Decoder):
         # CRC sequence (15 bits, 17 bits or 21 bits)
         elif bitnum == (self.last_databit + self.crc_len):
             if self.fd:
-                if dlc2len(self.dlc) < 16:
+                if dlc2len(self.dlc) <= 16:
                     crc_type = "CRC-17"
                 else:
                     crc_type = "CRC-21"
@@ -220,6 +245,7 @@ class Decoder(srd.Decoder):
 
             if self.fd:
                 self.set_nominal_bitrate()
+                self.resync_at_sample_point()
 
         # ACK slot bit (dominant: ACK, recessive: NACK)
         elif bitnum == (self.last_databit + self.crc_len + 2):
@@ -298,9 +324,7 @@ class Decoder(srd.Decoder):
             self.dlc = bitpack_msb(self.bits[self.dlc_start:self.dlc_start + 4])
             self.putb([10, ['Data length code: %d' % self.dlc,
                             'DLC: %d' % self.dlc, 'DLC']])
-            self.last_databit = self.dlc_start + 3 + (dlc2len(self.dlc) * 8)
-            if self.dlc > 8 and not self.fd:
-                self.putb([16, ['Data length code (DLC) > 8 is not allowed']])
+            self.last_databit = self.dlc_start + 3 + (self.data_length() * 8)
 
         # Remember all databyte bits, except the very last one.
         elif bitnum in range(self.dlc_start + 4, self.last_databit):
@@ -310,7 +334,7 @@ class Decoder(srd.Decoder):
         # The bits within a data byte are transferred MSB-first.
         elif bitnum == self.last_databit:
             self.ss_databytebits.append(self.samplenum) # Last databyte bit.
-            for i in range(dlc2len(self.dlc)):
+            for i in range(self.data_length()):
                 x = self.dlc_start + 4 + (8 * i)
                 b = bitpack_msb(self.bits[x:x + 8])
                 self.frame_bytes.append(b)
@@ -400,7 +424,7 @@ class Decoder(srd.Decoder):
             self.dlc = bitpack_msb(self.bits[self.dlc_start:self.dlc_start + 4])
             self.putb([10, ['Data length code: %d' % self.dlc,
                             'DLC: %d' % self.dlc, 'DLC']])
-            self.last_databit = self.dlc_start + 3 + (dlc2len(self.dlc) * 8)
+            self.last_databit = self.dlc_start + 3 + (self.data_length() * 8)
 
         # Remember all databyte bits, except the very last one.
         elif bitnum in range(self.dlc_start + 4, self.last_databit):
@@ -410,7 +434,7 @@ class Decoder(srd.Decoder):
         # The bits within a data byte are transferred MSB-first.
         elif bitnum == self.last_databit:
             self.ss_databytebits.append(self.samplenum) # Last databyte bit.
-            for i in range(dlc2len(self.dlc)):
+            for i in range(self.data_length()):
                 x = self.dlc_start + 4 + (8 * i)
                 b = bitpack_msb(self.bits[x:x + 8])
                 self.frame_bytes.append(b)
@@ -435,8 +459,8 @@ class Decoder(srd.Decoder):
         if self.fd and can_rx:
             if bitnum == 16 and self.frame_type == 'standard' \
                     or bitnum == 35 and self.frame_type == 'extended':
-                self.dom_edge_seen(force=True)
                 self.set_fast_bitrate()
+                self.resync_at_sample_point()
 
         # If this is a stuff bit, remove it from self.bits and ignore it.
         if self.is_stuff_bit():

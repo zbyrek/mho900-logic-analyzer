@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2018 Mike Jagdis <mjagdis@eris-associates.co.uk>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the 16 us low that begins
+## the entry sequence (UM0470) is not shown as a synchronization frame.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -84,6 +87,7 @@ class Decoder(srd.Decoder):
         self.eseq_edge = [[-1, None], [-1, None]]
         self.eseq_pairnum = 0
         self.eseq_pairstart = None
+        self.pending_sync = None
 
         self.reset()
 
@@ -219,7 +223,21 @@ class Decoder(srd.Decoder):
 
         self.bitseq(start, end, bit)
 
+    def put_pending_sync(self):
+        if self.pending_sync is not None:
+            start, end = self.pending_sync
+            self.put(start, end, self.out_ann, [1, ['synchronization frame', 'synchronization', 'sync', 's']])
+            self.pending_sync = None
+
     def detect_synchronize_frame(self, start, end):
+        # The entry sequence begins with a low as long as a synchronization
+        # frame. Which one it is shows in the next low: in the entry sequence
+        # that is a pulse longer than any synchronization frame.
+        if end - start > self.sync_reflen_max:
+            self.pending_sync = None
+        else:
+            self.put_pending_sync()
+
         # Strictly speaking, synchronization frames are only recognised when
         # SWIM is active. A falling edge on reset disables SWIM and an enter
         # sequence is needed to re-enable it. However we do not want to be
@@ -229,7 +247,7 @@ class Decoder(srd.Decoder):
         # synchronization frames that have believable lengths based on our
         # knowledge of the range of possible SWIM clocks.
         if self.samplenum - self.eseq_edge[1][1] >= self.sync_reflen_min and self.samplenum - self.eseq_edge[1][1] <= self.sync_reflen_max:
-            self.put(self.eseq_edge[1][1], self.samplenum, self.out_ann, [1, ['synchronization frame', 'synchronization', 'sync', 's']])
+            self.pending_sync = (self.eseq_edge[1][1], self.samplenum)
 
             # A low that lasts for more than 64 SWIM clock periods causes a
             # reset of the SWIM communication state machine and will switch
@@ -274,6 +292,13 @@ class Decoder(srd.Decoder):
                 self.eseq_pairnum = 0
 
     def decode(self):
+        try:
+            self.decode_edges()
+        except EOFError:
+            self.put_pending_sync()
+            raise
+
+    def decode_edges(self):
         while True:
             if self.bit_maxlen >= 0:
                 (swim,) = self.wait()

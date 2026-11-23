@@ -5,6 +5,9 @@
 ## Copyright (C) 2013 Matt Ranostay <mranostay@gmail.com>
 ## Copyright (C) 2014 alberink <alberink@stampfini.org>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: an unknown register does
+## not crash the decoder.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -100,6 +103,12 @@ class Decoder(srd.Decoder):
             self.putx([0, ['Polarity inversion register', 'Pol', 'P']])
         elif b == 3:
             self.putx([0, ['Configuration register', 'Conf', 'C']])
+        else:
+            self.putx([2, ['Warning: Unknown register 0x%02X.' % b]])
+
+    def handle_reg(self, b):
+        if self.reg <= 3:
+            getattr(self, 'handle_reg_0x%02x' % self.reg)(b)
 
     def check_correct_chip(self, addr):
         if addr not in (0x20, 0x21):
@@ -138,8 +147,7 @@ class Decoder(srd.Decoder):
                 return
             # Otherwise: Get data bytes until a STOP condition occurs.
             if cmd == 'DATA WRITE':
-                handle_reg = getattr(self, 'handle_reg_0x%02x' % self.reg)
-                handle_reg(databyte)
+                self.handle_reg(databyte)
             elif cmd == 'STOP':
                 self.state = 'IDLE'
                 self.chip = -1
@@ -151,7 +159,6 @@ class Decoder(srd.Decoder):
                 return
         elif self.state == 'READ IO REGS2':
             if cmd == 'DATA READ':
-                handle_reg = getattr(self, 'handle_reg_0x%02x' % self.reg)
-                handle_reg(databyte)
+                self.handle_reg(databyte)
             elif cmd == 'STOP':
                 self.state = 'IDLE'

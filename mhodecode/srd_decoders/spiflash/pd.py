@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2011-2020 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: RDID names the device
+## from its three ID bytes.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -148,10 +151,23 @@ class Decoder(srd.Decoder):
         return ['Command: %s (%s)' % (s, x), 'Command: %s' % s,
                 'Cmd: %s' % s, 'Cmd: %s' % x, x]
 
-    def cmd_vendor_dev_list(self):
-        c, d = cmds[self.state], 'Device = %s' % self.vendor_device()
+    def rdid_device(self):
+        # Name the device with the manufacturer, memory type and capacity.
+        for chip in chips.values():
+            id_ = chip['rdid_id']
+            if id_ is None:
+                continue
+            while id_ > 0xffffff:
+                id_ >>= 8 # Skip the extra bytes.
+            if id_ == self.rdid:
+                return '%s %s' % (chip['vendor'], chip['model'])
+        return 'Unknown'
+
+    def cmd_vendor_dev_list(self, name=None):
+        name = name or self.vendor_device()
+        c, d = cmds[self.state], 'Device = %s' % name
         return ['%s (%s): %s' % (c[1], c[0], d), '%s: %s' % (c[1], d),
-                '%s: %s' % (c[0], d), d, self.vendor_device()]
+                '%s: %s' % (c[0], d), d, name]
 
     def emit_cmd_byte(self):
         self.ss_cmd = self.ss
@@ -186,18 +202,20 @@ class Decoder(srd.Decoder):
             self.emit_cmd_byte()
         elif self.cmdstate == 2:
             # Byte 2: Slave sends the JEDEC manufacturer ID.
+            self.rdid = miso
             self.putx([Ann.FIELD, ['Manufacturer ID: 0x%02x' % miso]])
         elif self.cmdstate == 3:
             # Byte 3: Slave sends the memory type.
+            self.rdid = (self.rdid << 8) | miso
             self.putx([Ann.FIELD, ['Memory type: 0x%02x' % miso]])
         elif self.cmdstate == 4:
             # Byte 4: Slave sends the device ID.
-            self.device_id = miso
+            self.rdid = (self.rdid << 8) | miso
             self.putx([Ann.FIELD, ['Device ID: 0x%02x' % miso]])
 
         if self.cmdstate == 4:
             self.es_cmd = self.es
-            self.putc([Ann.RDID, self.cmd_vendor_dev_list()])
+            self.putc([Ann.RDID, self.cmd_vendor_dev_list(self.rdid_device())])
             self.state = None
         else:
             self.cmdstate += 1

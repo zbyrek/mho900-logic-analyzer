@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2019 Mariusz Bialonczyk <manio@skyboo.net>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the first byte after
+## Channel Access Read and Reset Activity Latches is shown.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -88,9 +91,7 @@ class Decoder(srd.Decoder):
                     self.ss, self.es = ss, es
                     self.putx([0, ['Data: 0x%02x' % self.bytes[-1]]])
             elif 0xf5 == self.bytes[0]: # Channel Access Read
-                if 2 == len(self.bytes):
-                    self.ss = ss
-                elif 2 < len(self.bytes):
+                if 2 <= len(self.bytes):
                     self.ss, self.es = ss, es
                     self.putx([0, ['PIO sample: 0x%02x' % self.bytes[-1]]])
             elif 0x5a == self.bytes[0]: # Channel Access Write
@@ -119,9 +120,7 @@ class Decoder(srd.Decoder):
                     self.ss, self.es = ss, es
                     self.putx([0, ['Data: 0x%02x' % self.bytes[-1]]])
             elif 0xc3 == self.bytes[0]: # Reset Activity Latches
-                if 2 == len(self.bytes):
-                    self.ss = ss
-                elif 2 < len(self.bytes):
+                if 2 <= len(self.bytes):
                     self.ss, self.es = ss, es
                     if 0xaa == self.bytes[-1]:
                       self.putx([0, ['Success']])

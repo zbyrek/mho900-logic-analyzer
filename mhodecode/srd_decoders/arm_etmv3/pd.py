@@ -3,6 +3,10 @@
 ##
 ## Copyright (C) 2015 Petteri Aimonen <jpa@sigrok.mail.kapsi.fi>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: a one-byte branch
+## packet carries six address bits, and the state bit of a five-byte branch
+## is not part of the address.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -86,7 +90,8 @@ def parse_branch_addr(bytes_, ref_addr, cpu_state, branch_enc):
         if addrlen == 5 and bytes_[4] & 0x40:
             have_exc_info = True
     elif branch_enc == 'alternative':
-        addr_bits -= 1 # Top bit of address indicates exc_info.
+        if addrlen >= 2:
+            addr_bits -= 1 # Top bit of address indicates exc_info.
         if addrlen >= 2 and addr & (1 << addr_bits):
             have_exc_info = True
             addr &= ~(1 << addr_bits)
@@ -110,12 +115,12 @@ def parse_branch_addr(bytes_, ref_addr, cpu_state, branch_enc):
 
     # Shift the address according to current CPU state.
     if cpu_state == 'arm':
-        addr = (addr & 0xFFFFFFFE) << 1
+        addr = (addr & 0x7FFFFFFE) << 1
         addr_bits += 1
     elif cpu_state == 'thumb':
         addr = addr & 0xFFFFFFFE
     elif cpu_state == 'jazelle':
-        addr = (addr & 0xFFFFFFFFE) >> 1
+        addr = (addr & 0x1FFFFFFFE) >> 1
         addr_bits -= 1
     else:
         raise NotImplementedError('Unhandled state: ' + cpu_state)

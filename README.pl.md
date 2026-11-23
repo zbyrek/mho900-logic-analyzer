@@ -172,6 +172,8 @@ przy 1 M punktów i 23 s przy 10 M punktów (dwa kanały analogowe i cyfrowe).
 - **Próg:** domyślny próg to 0 V, a logika 0–3,3 V wymaga około 1,65 V. Ustawia się go na zakładce Oscyloskop.
 - **Gęstość próbek:** kanały cyfrowe mają 1/4 próbek kanału analogowego przy jednym kanale, 1/2 przy dwóch i tyle samo
   przy czterech. Program czyta ten stosunek z pliku.
+- **Wolna podstawa czasu:** przy 50 ms/dz i wolniej oscyloskop nie zapisuje do pliku kanałów cyfrowych (zmierzono na firmware 00.01.00
+  przy 50 i 100 ms/dz, także z wyłączonym auto ROLL; 20 ms/dz działa poprawnie). Program pisze o tym w logu. Kanały cyfrowe wymagają 20 ms/dz lub szybciej.
 - **Łączenie z analogowymi:** zmierzono opóźnienie kanałów cyfrowych względem analogowych: 900 ns przy 10 MSa/s, 160 ns przy 50 MSa/s,
   39 ns przy 1 GSa/s i 19,5 ns przy 2 GSa/s, na jednym zestawie przewodów, których długości nie porównano. Przyczyny nie ustalono.
   Przewody mogą dodać stały czas, ale same nie tłumaczą opóźnienia zmieniającego się z częstotliwością próbkowania. Program go nie koryguje,
@@ -193,7 +195,11 @@ Wszystkie dekodery programu pochodzą z sigrok. Wyszukiwarka nad drzewem filtruj
 układa je według kategorii albo protokołu nadrzędnego: dekoder wymagający innego, na przykład `i2cdemux`, leży wtedy
 pod nim (I²C).
 
-Niezmienione dekodery leżą w `mhodecode/srd_decoders` (130 używanych, wersja z repozytorium z 1.10.2024).
+Dekodery leżą w `mhodecode/srd_decoders` (130 używanych, wersja z repozytorium z 1.10.2024). Są niezmienione poza
+poprawkami w `amulet_ascii`, `arm_etmv3`, `atsha204a`, `avr_pdi`, `can`, `cc1101`, `ds1307`, `ds2408`, `ds28ea00`, `dsi`, `eeprom24xx`, `em4305`,
+`ir_rc6`, `jtag_ejtag`, `jtag_stm32`, `lfast`, `lm75`, `lpc`, `ltc26x7`, `mlx90614`, `mxc6225xu`, `nrf905`, `nunchuk`, `pan1321`, `pjdl`,
+`qi`, `rfm12`, `sae_j1850_vpw`, `sda2506`, `sdcard_spi`, `sipi`, `sle44xx`, `spiflash`, `st25r39xx_spi`, `st7735`, `swd`, `swim`, `tca6408a`, `uart`,
+`usb_power_delivery`, `x2444m`, `xfp`, `xy2-100` i `z80`, które wymienia nagłówek każdego z tych plików.
 Plik `mhodecode/sigrokdecode.py` zastępuje rdzeń napisany w C, więc dekodery nie wymagają instalacji sigrok.
 
 **Pas dekodera.** Dodany dekoder ma pas na osi czasu od razu, także bez danych. Wiersze pojawiają się, gdy mają adnotacje,
