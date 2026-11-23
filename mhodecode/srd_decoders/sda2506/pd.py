@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2018 Max Weller
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: data is sampled 25 us
+## after the falling clock edge.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -105,7 +108,7 @@ class Decoder(srd.Decoder):
             elif self.matched[0] and ce == 0 and clk == 0:
                 # Falling clk edge and data mode.
                 bitstart = self.samplenum
-                clk, d, ce = self.wait([{'skip': int(2.5 * (1e6 / self.samplerate))}, {0: 'r'}, {2: 'e'}]) # Wait 25 us for data ready.
+                clk, d, ce = self.wait([{'skip': max(1, int(25e-6 * self.samplerate))}, {0: 'r'}, {2: 'e'}]) # Wait 25 us for data ready.
                 if self.matched == (True, False, False):
                     self.wait([{0: 'r'}, {2: 'e'}])
                 if len(self.databits) == 0:

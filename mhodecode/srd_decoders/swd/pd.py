@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2014 Angus Gratton <gus@projectgus.com>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the first line reset
+## with strict_start=yes does not stop the decoder.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -208,7 +211,7 @@ class Decoder(srd.Decoder):
 
     def reset_state(self):
         '''Line reset (or equivalent), wait for a new pending SWD request.'''
-        if self.state != 'REQ': # Emit a Python data item.
+        if self.state not in ('REQ', 'UNKNOWN'): # Emit a Python data item.
             self.put_python_data()
         # Clear state.
         self.bits = ''

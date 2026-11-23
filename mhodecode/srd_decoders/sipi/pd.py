@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2020 Soeren Apel <soeren@apelpie.net>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: a read answer carries
+## data without an address (NXP AN5134, figure 2).
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -33,7 +36,7 @@ command_codes = {
     # Reserved
     0b01000: ('ACK', 0, 0),
     0b01001: ('NACK (Target Error)', 0, 0),
-    0b01010: ('Read Answer with ACK', 4, 4),
+    0b01010: ('Read Answer with ACK', 0, 4),
     # Reserved
     0b01100: ('Trigger with ACK', 0, 0),
     # Reserved

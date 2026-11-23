@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2012 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: negative temperatures,
+## the pointer byte.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -69,6 +72,7 @@ class Decoder(srd.Decoder):
         self.state = 'IDLE'
         self.reg = 0x00 # Currently selected register
         self.databytes = []
+        self.expect_pointer = False
 
     def start(self):
         self.out_ann = self.register(srd.OUTPUT_ANN)
@@ -91,8 +95,11 @@ class Decoder(srd.Decoder):
 
     def output_temperature(self, s, rw):
         # TODO: Support for resolutions other than 9 bit.
-        before, after = self.databytes[0], (self.databytes[1] >> 7) * 5
-        celsius = float('%d.%d' % (before, after))
+        # The value is a 9-bit two's complement number of half degrees.
+        value = (self.databytes[0] << 1) | (self.databytes[1] >> 7)
+        if value & 0x100:
+            value -= 0x200
+        celsius = value / 2.0
         kelvin = celsius + 273.15
         self.putb([0, ['%s: %.1f °C' % (s, celsius)]])
         self.putb([1, ['%s: %.1f K' % (s, kelvin)]])
@@ -173,11 +180,20 @@ class Decoder(srd.Decoder):
             # Wait for an address read/write operation.
             if cmd in ('ADDRESS READ', 'ADDRESS WRITE'):
                 self.warn_upon_invalid_slave(databyte)
+                self.databytes = []
+                # The first byte written selects the register, also for the
+                # following reads.
+                self.expect_pointer = cmd == 'ADDRESS WRITE'
                 self.state = cmd[8:] + ' REGS' # READ REGS / WRITE REGS
         elif self.state in ('READ REGS', 'WRITE REGS'):
-            if cmd in ('DATA READ', 'DATA WRITE'):
+            if cmd == 'DATA WRITE' and self.expect_pointer:
+                self.reg = databyte & 0x03
+                self.expect_pointer = False
+            elif cmd in ('DATA READ', 'DATA WRITE'):
                 handle_reg = getattr(self, 'handle_reg_0x%02x' % self.reg)
                 handle_reg(databyte, cmd[5:]) # READ / WRITE
+            elif cmd == 'START REPEAT':
+                self.state = 'GET SLAVE ADDR'
             elif cmd == 'STOP':
                 # TODO: Any output?
                 self.state = 'IDLE'

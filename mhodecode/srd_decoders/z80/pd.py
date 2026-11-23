@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2014 Daniel Elstner <daniel.kitta@gmail.com>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the last bus cycle of a
+## capture is shown.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 3 of the License, or
@@ -136,7 +139,11 @@ class Decoder(srd.Decoder):
     def decode(self):
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
-            pins = self.wait()
+            try:
+                pins = self.wait()
+            except EOFError:
+                self.flush_pending()
+                raise
             cycle = Cycle.NONE
             if pins[Pin.MREQ] != 1: # default to asserted
                 if pins[Pin.RD] == 0:
@@ -183,6 +190,19 @@ class Decoder(srd.Decoder):
         self.data_start = self.samplenum
         self.pend_data  = self.bus_data
         self.ann_data   = ann_data_cycle_map[self.prev_cycle]
+
+    def flush_pending(self):
+        # The capture ended: show the last complete bus cycle.
+        if self.ann_data is None:
+            return
+        self.prev_cycle = Cycle.NONE
+        self.instr_len += 1
+        self.op_state()
+        if self.ann_dasm is not None and self.ann_dasm != Ann.WARN:
+            self.put_disasm()
+        self.put_text(self.data_start, self.ann_data,
+                      '{:02X}'.format(self.pend_data))
+        self.ann_data = None
 
     def on_cycle_trans(self):
         self.put_text(self.samplenum - 1, Ann.WARN,

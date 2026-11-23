@@ -94,6 +94,11 @@ class ScopeError(RuntimeError):
     """Communication failure or an error reported by the instrument."""
 
 
+# At this time base and slower a saved BIN file has no digital record, also with :TIMebase:ROLL 0: without analog
+# channels it is the 16-byte file header alone (measured on firmware 00.01.00 at 50 and 100 ms/div; 20 ms/div is right).
+DIGITAL_LEFT_OUT_SCALE = 0.05
+
+
 def pod_members(pod: int) -> range:
     """The numbers of the digital channels in a group: 0 to 7 in POD1, 8 to 15 in POD2."""
     return range((pod - 1) * POD_CHANNELS, pod * POD_CHANNELS)
@@ -569,6 +574,10 @@ class Scope:
 
     def digital_thresholds(self) -> dict:
         return {pod: self.query_float(f":LA:POD{pod}:THReshold?") for pod in DIGITAL_PODS}
+
+    def digital_left_out(self) -> bool:
+        """Whether the time base is why a saved file has no digital record although the digital channels are on."""
+        return self.query(":LA:ENABle?") == "1" and self.query_float(":TIMebase:MAIN:SCALe?") >= DIGITAL_LEFT_OUT_SCALE
 
     def save_memory(self, progress=None) -> bytes:
         """The whole memory as a BIN file: the only way to the digital channels (see rigol_files).

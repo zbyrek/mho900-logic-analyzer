@@ -4,6 +4,9 @@
 ## Copyright (C) 2011-2014 Uwe Hermann <uwe@hermann-uwe.de>
 ## Copyright (C) 2016 Gerhard Sittig <gerhard.sittig@gmx.net>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: a BREAK does not stop
+## the decoder.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -219,6 +222,8 @@ class Decoder(srd.Decoder):
         # potentially currently executing instruction.
         is_break = byteval is None
         if is_break:
+            if self.cmd_ss is None:
+                self.cmd_ss = ss
             self.cmd_insn_parts_nice.append('BREAK')
             self.cmd_insn_parts_terse.append('BRK')
             self.insn_rep_count = 0
@@ -473,6 +478,7 @@ class Decoder(srd.Decoder):
             self.zero_count += 1
             if self.zero_count == frame_bitcount:
                 self.break_ss = self.zero_ss
+                self.break_es = es
 
         # BREAK conditions are _at_minimum_ the length of a UART frame, but
         # can span an arbitrary number of bit times. Track the "end sample"
@@ -481,7 +487,7 @@ class Decoder(srd.Decoder):
         # as well. When the line is low, BREAK still is pending. When the line
         # is high, the current bit cannot be START, thus return from here.
         if self.break_ss is not None:
-            if bitval == '0':
+            if bitval == 0:
                 self.break_es = es
                 return
             self.put(self.break_ss, self.break_es, self.out_ann,

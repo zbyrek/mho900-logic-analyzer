@@ -688,7 +688,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _show_about(self):
         QtWidgets.QMessageBox.about(self, tr("About and licenses"), tr(
-            "MHO900 Logic Analyzer {version}. Contains {count} decoders from the libsigrokdecode project (sigrok.org), unmodified, under the GPLv2+, GPLv3+, BSD and MIT licenses. The GPLv3 text and the list of authors are in the srd_decoders folder. The layout of the decoder panel follows PulseView (GPLv3).Distributed together with them, this program falls under the GNU GPL version 3 or later, without any warranty, and its recipients have a right to the source code.",
+            "MHO900 Logic Analyzer {version}. Contains {count} decoders from the libsigrokdecode project (sigrok.org), with corrections in amulet_ascii, arm_etmv3, atsha204a, avr_pdi, can, cc1101, ds1307, ds2408, ds28ea00, dsi, eeprom24xx, em4305, ir_rc6, jtag_ejtag, jtag_stm32, lfast, lm75, lpc, ltc26x7, mlx90614, mxc6225xu, nrf905, nunchuk, pan1321, pjdl, qi, rfm12, sae_j1850_vpw, sda2506, sdcard_spi, sipi, sle44xx, spiflash, st25r39xx_spi, st7735, swd, swim, tca6408a, uart, usb_power_delivery, x2444m, xfp, xy2-100 and z80, under the GPLv2+, GPLv3+, BSD and MIT licenses. The GPLv3 text and the list of authors are in the srd_decoders folder. The layout of the decoder panel follows PulseView (GPLv3).Distributed together with them, this program falls under the GNU GPL version 3 or later, without any warranty, and its recipients have a right to the source code.",
             version=__version__, count=len(SIGROK)))
 
     def _group(self, title):
@@ -1107,9 +1107,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _read_job(self, channels, progress, sample_format):
         digital_wanted = [channel for channel in channels if is_digital(channel)]
         if digital_wanted or sample_format == FILE_FORMAT:
-            waves = self._read_file_job(channels, digital_wanted, progress)
+            memory = self._read_file_job(digital_wanted, progress)
+            waves = memory.waves
+            left_out = bool(digital_wanted) and not memory.digital_factor and self.scope.digital_left_out()
         else:
-            waves = {}
+            waves, left_out = {}, False
             for channel in channels:
                 if not self.scope.channel_enabled(channel):
                     continue
@@ -1127,16 +1129,17 @@ class MainWindow(QtWidgets.QMainWindow):
             if not is_digital(channel):
                 wave.volts_per_div = states[channel]["scale"]
         states["absent"] = absent
+        states["digital_left_out"] = left_out
         if digital_wanted:
             states["thresholds"] = self.scope.digital_thresholds()
         return waves, states
 
-    def _read_file_job(self, channels, digital_wanted, progress):
+    def _read_file_job(self, digital_wanted, progress):
         """Everything the scope has in memory comes in one file, so all of it is kept, but of the
         digital channels only the assigned ones and those that change: 16 flat lines help nobody."""
         progress(tr("The scope is saving its memory to a file…"))
         data = self.scope.save_memory(lambda done: progress(tr("Downloading the file: {size:.1f} MB", size=done / 1e6)))
-        return rigol_files.parse_bin(data, digital_wanted).waves
+        return rigol_files.parse_bin(data, digital_wanted)
 
     def _acquire(self, keep_old=False):
         """keep_old: the new samples go after the ones already shown, as Repeat collects them."""
@@ -1242,9 +1245,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log(tr("Warning: {note}", note=note))
         if not triggered:
             self._log(tr("Warning: no trigger within 1 s, the acquisition was forced. Check the trigger settings."))
-        if states["absent"]:
+        left_out = [channel for channel in states["absent"] if is_digital(channel)] if states.get("digital_left_out") else []
+        if left_out:
+            self._log(tr("Warning: the scope does not save digital channels at 50 ms/div or slower (measured on firmware 00.01.00), so {channels} could not be read. Choose 20 ms/div or faster and acquire again.",
+                         channels=", ".join(map(channel_name, left_out))))
+        turned_off = [channel for channel in states["absent"] if channel not in left_out]
+        if turned_off:
             self._log(tr("Warning: the scope's memory has no channels {channels}. Turn them on and acquire.",
-                         channels=", ".join(map(channel_name, states["absent"]))))
+                         channels=", ".join(map(channel_name, turned_off))))
         for channel, wave in waves.items():
             if is_digital(channel):
                 continue

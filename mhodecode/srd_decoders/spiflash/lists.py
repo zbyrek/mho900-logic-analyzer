@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2015-2020 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the RDID value of the
+## MX25L8006.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -158,7 +161,7 @@ chips = {
         'res_id': 0x13,
         'rems_id': 0xc213,
         'rems2_id': 0xc213,
-        'rdid_id': 0xc22013,
+        'rdid_id': 0xc22014,
         'page_size': 256,
         'sector_size': 4 * 1024,
         'block_size': 64 * 1024,

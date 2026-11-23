@@ -4,6 +4,9 @@
 ## Copyright (C) 2019 Uli Huber
 ## Copyright (C) 2020 Soeren Apel
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: all 18 bits of an 18-bit
+## position are read, and the status of the first frame is shown.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -166,7 +169,7 @@ class Decoder(srd.Decoder):
                    pos = pos if pos < 32768 else pos - 65536
                else:
                    count = 17
-                   for ss, es, value in self.bits[3:19]:
+                   for ss, es, value in self.bits[1:19]:
                        pos |= value << count
                        count -= 1
                    pos = pos if pos < 131072 else pos - 262144
@@ -229,7 +232,7 @@ class Decoder(srd.Decoder):
                 stat_value = stat
 
                 bit_es = self.samplenum
-                if bit_ss:
+                if bit_ss is not None:
                     self.process_bit(sync_value, bit_ss, bit_es, bit_value)
                 bit_ss = self.samplenum
             else:
@@ -237,6 +240,9 @@ class Decoder(srd.Decoder):
                 sync_value = sync
 
                 stat_es = self.samplenum
-                if stat_ss and has_stat:
+                if stat_ss is None:
+                    # No bit precedes the first frame, so none is skipped.
+                    self.stat_skip_bit = False
+                elif has_stat:
                     self.process_stat_bit(sync_value, stat_ss, stat_es, stat_value)
                 stat_ss = self.samplenum

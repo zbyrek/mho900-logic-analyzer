@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2016 Benjamin Larsson <benjamin@southpole.se>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: read commands are
+## decoded.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -229,6 +232,25 @@ class Decoder(srd.Decoder):
                      [9, ['Data' + ': %X' % data, '%X' % data]])
 
     def put_fields(self):
+        if self.bit_nr == 12:
+            # Read word: command and address only.
+            self.put(self.bits_pos[0][1], self.bits_pos[0][2], self.out_ann,
+                     [4, ['Logic zero', 'LZ']])
+            self.put(self.bits_pos[1][1], self.bits_pos[4][2], self.out_ann,
+                     [4, ['Command', 'Cmd', 'C']])
+            self.put(self.bits_pos[5][1], self.bits_pos[11][2], self.out_ann,
+                     [4, ['Address', 'Addr', 'A']])
+            cmd = self.get_3_bits(1)
+            self.put(self.bits_pos[1][1], self.bits_pos[3][2], self.out_ann,
+                     [5, [self.cmds[cmd]]])
+            self.print_row_parity(1, 3)
+            addr = self.get_4_bits(5)
+            self.put(self.bits_pos[5][1], self.bits_pos[8][2], self.out_ann,
+                     [9, ['Addr' + ': %d' % addr, '%d' % addr]])
+            self.put(self.bits_pos[9][1], self.bits_pos[10][2], self.out_ann,
+                     [5, ['Zero bits', 'ZB']])
+            self.print_row_parity(5, 6)
+
         if self.bit_nr == 50:
             self.put(self.bits_pos[0][1], self.bits_pos[0][2], self.out_ann,
                      [4, ['Logic zero']])

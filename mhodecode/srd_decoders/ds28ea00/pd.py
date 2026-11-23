@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2012 Iztok Jeras <iztok.jeras@gmail.com>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: function commands after
+## Skip ROM are decoded.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -78,7 +81,8 @@ class Decoder(srd.Decoder):
             self.putx([0, ['ROM: 0x%016x' % (val)]])
             self.state = 'COMMAND'
         elif code == 'DATA':
-            if self.state == 'COMMAND':
+            # Without a ROM address (Skip ROM), the command comes first.
+            if self.state in ('ROM', 'COMMAND'):
                 if val not in command:
                     self.putx([0, ['Unrecognized command: 0x%02x' % val]])
                     return

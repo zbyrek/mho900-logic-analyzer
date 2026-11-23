@@ -5,6 +5,9 @@
 ## Copyright (C) 2018 davidanger <davidanger@163.com>
 ## Copyright (C) 2018 Peter Hazenberg <sigrok@haas-en-berg.nl>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: a packet at the end of
+## the capture is decoded.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -598,7 +601,14 @@ class Decoder(srd.Decoder):
         if not self.samplerate:
             raise SamplerateError('Cannot decode without samplerate.')
         while True:
-            pins = self.wait([{0: 'e'}, {1: 'e'}, {'skip': int(self.samplerate/1e3)}])
+            try:
+                pins = self.wait([{0: 'e'}, {1: 'e'}, {'skip': int(self.samplerate/1e3)}])
+            except EOFError:
+                # The end of the capture ends the packet.
+                if self.startsample:
+                    self.edges.append(self.previous)
+                    self.decode_packet()
+                raise
 
             # First sample of the packet, just record the start date.
             if not self.startsample:

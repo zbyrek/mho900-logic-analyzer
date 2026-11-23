@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2018 Aleksander Alekseev <afiskon@gmail.com>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the last command of a
+## capture is described, too.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -131,7 +134,11 @@ class Decoder(srd.Decoder):
         self.reset()
         while True:
             # Check data on both CLK edges.
-            (cs, clk, mosi, dc) = self.wait({1: 'e'})
+            try:
+                (cs, clk, mosi, dc) = self.wait({1: 'e'})
+            except EOFError:
+                self.put_desc(desc_ss, desc_es, current_cmd, current_data)
+                raise
 
             if cs == 1: # Wait for CS = low, ignore the rest.
                 self.reset()

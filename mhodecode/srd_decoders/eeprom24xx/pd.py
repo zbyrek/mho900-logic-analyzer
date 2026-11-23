@@ -3,6 +3,10 @@
 ##
 ## Copyright (C) 2014 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: sequential current
+## address reads are decoded; one data byte after a two-byte address is one
+## byte.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -100,6 +104,7 @@ class Decoder(srd.Decoder):
         self.packets = []
         self.bytebuf = []
         self.is_cur_addr_read = False
+        self.is_seq_cur_addr_read = False
         self.is_random_access_read = False
         self.is_seq_random_read = False
         self.is_byte_write = False
@@ -183,10 +188,11 @@ class Decoder(srd.Decoder):
         return 'addr=%s, %s' % (a, d)
 
     def decide_on_seq_or_rnd_read(self):
-        if len(self.bytebuf) < 2:
+        num_data_bytes = len(self.bytebuf) - self.chip['addr_bytes']
+        if num_data_bytes < 1:
             self.reset_variables()
             return
-        if len(self.bytebuf) == 2:
+        if num_data_bytes == 1:
             self.is_random_access_read = True
         else:
             self.is_seq_random_read = True
@@ -221,6 +227,19 @@ class Decoder(srd.Decoder):
                        'Current address read', 'Cur addr read', 'CAR', 'C']])
             self.putbin([0, bytes([self.bytebuf[0]])])
             self.addr_counter += 1
+        elif self.is_seq_cur_addr_read:
+            # Sequential current address read: no word address, two or more
+            # data bytes.
+            for p in self.packets[1:]:
+                self.put_data_byte(p)
+                self.addr_counter += 1
+            self.put(self.packets[1][0], self.packets[-1][1], self.out_ann,
+                [8, ['Data', 'D']])
+            s = 'Sequential current address read'
+            self.putb([14, ['%s (%d bytes): %s' % (s, len(self.bytebuf),
+                       self.hexbytes(0)), '%s (%d bytes)' % (s,
+                       len(self.bytebuf)), s, 'SCAR', 'S']])
+            self.putbin([0, bytes(self.bytebuf)])
         elif self.is_random_access_read:
             # Random access read: word address, one data byte.
             self.put_control_word(self.packets[idx][4])
@@ -272,16 +291,10 @@ class Decoder(srd.Decoder):
 
     def handle_r_get_ack_nack_after_word_addr_or_byte(self):
         if self.cmd == 'ACK':
-            self.state = 'R GET RESTART'
+            self.state = 'R READ BYTE'
         elif self.cmd == 'NACK':
             self.is_cur_addr_read = True
             self.state = 'GET STOP AFTER LAST BYTE'
-        else:
-            self.reset_variables()
-
-    def handle_r_get_restart(self):
-        if self.cmd == 'RESTART':
-            self.state = 'R READ BYTE'
         else:
             self.reset_variables()
 
@@ -289,6 +302,13 @@ class Decoder(srd.Decoder):
         if self.cmd == 'DATA READ':
             self.packet_append()
             self.state = 'R GET ACK NACK AFTER BYTE WAS READ'
+        elif self.cmd == 'STOP':
+            self.is_cur_addr_read = len(self.bytebuf) == 1
+            self.is_seq_cur_addr_read = len(self.bytebuf) > 1
+            self.es_block = self.es
+            self.putb([0, ['Warning: STOP expected after a NACK (not ACK)']])
+            self.put_operation()
+            self.reset_variables()
         else:
             self.reset_variables()
 
@@ -296,7 +316,8 @@ class Decoder(srd.Decoder):
         if self.cmd == 'ACK':
             self.state = 'R READ BYTE'
         elif self.cmd == 'NACK':
-            # It's either a RANDOM READ or a SEQUENTIAL READ.
+            # It's a SEQUENTIAL CURRENT ADDRESS READ.
+            self.is_seq_cur_addr_read = True
             self.state = 'GET STOP AFTER LAST BYTE'
         else:
             self.reset_variables()
@@ -344,11 +365,12 @@ class Decoder(srd.Decoder):
             self.packet_append()
             self.state = 'W GET ACK NACK AFTER BYTE WAS WRITTEN'
         elif self.cmd == 'STOP':
-            if len(self.bytebuf) < 2:
+            num_data_bytes = len(self.bytebuf) - self.chip['addr_bytes']
+            if num_data_bytes < 1:
                 self.reset_variables()
                 return
             self.es_block = self.es
-            if len(self.bytebuf) == 2:
+            if num_data_bytes == 1:
                 self.is_byte_write = True
             else:
                 self.is_page_write = True

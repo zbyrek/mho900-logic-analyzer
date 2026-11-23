@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2012 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: unknown registers do not
+## crash the decoder, the acceleration is signed and PD is shown.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -84,15 +87,21 @@ class Decoder(srd.Decoder):
     def putx(self, data):
         self.put(self.ss, self.es, self.out_ann, data)
 
+    def handle_reg(self, b):
+        if self.reg <= 3:
+            getattr(self, 'handle_reg_0x%02x' % self.reg)(b)
+        else:
+            self.putx([0, ['Unknown register 0x%02X: 0x%02X' % (self.reg, b)]])
+
     def handle_reg_0x00(self, b):
         # XOUT: 8-bit x-axis acceleration output.
         # Data is in 2's complement, values range from -128 to 127.
-        self.putx([0, ['XOUT: %d' % b]])
+        self.putx([0, ['XOUT: %d' % (b - ((b & 0x80) << 1))]])
 
     def handle_reg_0x01(self, b):
         # YOUT: 8-bit y-axis acceleration output.
         # Data is in 2's complement, values range from -128 to 127.
-        self.putx([0, ['YOUT: %d' % b]])
+        self.putx([0, ['YOUT: %d' % (b - ((b & 0x80) << 1))]])
 
     def handle_reg_0x02(self, b):
         # STATUS: Orientation and shake status.
@@ -135,7 +144,7 @@ class Decoder(srd.Decoder):
 
         # Bits[6:6]: SHM
         shm = (b >> 6) & 1
-        ann = 'SHM = %d: Set shake mode to %d\n' % (shm, shm)
+        ann += 'SHM = %d: Set shake mode to %d\n' % (shm, shm)
 
         # Bits[5:4]: SHTH[1:0]
         shth = (((b >> 5) & 1) << 1) | ((b >> 4) & 1)
@@ -187,8 +196,7 @@ class Decoder(srd.Decoder):
                 return
             # Otherwise: Get data bytes until a STOP condition occurs.
             if cmd == 'DATA WRITE':
-                handle_reg = getattr(self, 'handle_reg_0x%02x' % self.reg)
-                handle_reg(databyte)
+                self.handle_reg(databyte)
                 self.reg += 1
                 # TODO: Check for NACK!
             elif cmd == 'STOP':
@@ -206,8 +214,7 @@ class Decoder(srd.Decoder):
                 pass # TODO
         elif self.state == 'READ REGS2':
             if cmd == 'DATA READ':
-                handle_reg = getattr(self, 'handle_reg_0x%02x' % self.reg)
-                handle_reg(databyte)
+                self.handle_reg(databyte)
                 self.reg += 1
                 # TODO: Check for NACK!
             elif cmd == 'STOP':

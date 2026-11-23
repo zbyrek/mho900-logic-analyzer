@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2010-2014 Uwe Hermann <uwe@hermann-uwe.de>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: every read starts at
+## register 0.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -124,8 +127,6 @@ class Decoder(srd.Decoder):
         self.putd(7, 6, [10, ['Accelerometer Z value bits[1:0]: 0x%X' % az_rest,
                               'AZ[1:0]: 0x%X' % az_rest]])
 
-        self.reg = 0x00
-
     def output_full_block_if_possible(self):
         # For now, only output summary annotations if all values are available.
         t = (self.sx, self.sy, self.ax, self.ay, self.az, self.bz, self.bc)
@@ -182,14 +183,16 @@ class Decoder(srd.Decoder):
                 self.state = 'WRITE REGS'
         elif self.state == 'READ REGS':
             if cmd == 'DATA READ':
-                handle_reg = getattr(self, 'handle_reg_0x%02x' % self.reg)
-                handle_reg(databyte)
+                if self.reg <= 0x05:
+                    handle_reg = getattr(self, 'handle_reg_0x%02x' % self.reg)
+                    handle_reg(databyte)
                 self.reg += 1
             elif cmd == 'STOP':
                 self.es_block = es
                 self.output_full_block_if_possible()
                 self.sx = self.sy = self.ax = self.ay = self.az = -1
                 self.bz = self.bc = -1
+                self.reg = 0x00
                 self.state = 'IDLE'
             else:
                 # self.putx([14, ['Ignoring: %s (data=%s)' % (cmd, databyte)]])

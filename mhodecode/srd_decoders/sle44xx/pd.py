@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2019 Federico Cerutti <federico@ceres-c.it>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the processing clock
+## count does not include the STOP condition and the final I/O rise.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -377,6 +380,9 @@ class Decoder(srd.Decoder):
         # expected byte count is reached, or another CMD starts. In the
         # PROC case a high I/O level terminates execution.
         if self.state == 'DATA':
+            # The falling CLK edge of the STOP condition is no bit.
+            if ss is None:
+                return
             if self.out_len:
                 self.state = 'OUT'
             elif self.cmd_proc:
@@ -393,7 +399,9 @@ class Decoder(srd.Decoder):
             if ss is not None:
                 self.processing_update(ss, 0, high)
             if es is not None:
-                self.processing_update(es, 1, high)
+                # CLK periods end with a falling edge (bit is None). The rise
+                # of I/O also ends here, but is no CLK period.
+                self.processing_update(es, 1 if bit is None else 0, high)
             if high:
                 self.flush_queued()
             return

@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2020 Analog Devices Inc.
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: reserved commands, DAC
+## addresses and other slave addresses do not crash the decoder.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 3 of the License, or
@@ -38,6 +41,8 @@ addresses = {
     0x01: ['DAC B', 'B'],
     0x0F: ['All DACs', 'All'],
 }
+
+reserved = ['Reserved', 'Res', 'R']
 
 input_voltage_format = ['%.6fV', '%.2fV']
 
@@ -96,7 +101,7 @@ class Decoder(srd.Decoder):
         if data == 0x73:
             ann = ['Global address', 'Global addr', 'Glob addr', 'GA']
             self.put(self.ss, self.es, self.out_ann, [0, ann])
-            return
+            return True
         ann = ['CA2=%s CA1=%s CA0=%s', '2=%s 1=%s 0=%s', '%s %s %s', '%s %s %s']
         addr = 0
         for i in range(7):
@@ -111,20 +116,25 @@ class Decoder(srd.Decoder):
                 addr |= mask
 
         addr -= 0x04
+        if (data & 0x0c) or not (0 <= addr < 27):
+            self.put(self.ss, self.es, self.out_ann,
+                [0, ['Not an LTC26x7 address: 0x%02X' % data, 'Unknown', 'U']])
+            return False
         ternary_values = self.convert_ternary_str(addr)
         for i in range(len(ann)):
             ann[i] = ann[i] % (slave_address[ternary_values[0]][i],
                                slave_address[ternary_values[1]][i],
                                slave_address[ternary_values[2]][i])
         self.put(self.ss, self.es, self.out_ann, [0, ann])
+        return True
 
     def handle_cmd_addr(self, data):
         cmd_val = (data >> 4) & 0x0F
         self.dac_val = (data & 0x0F)
         sm = (self.ss + self.es) // 2
 
-        self.put(self.ss, sm, self.out_ann, [1, commands[cmd_val]])
-        self.put(sm, self.es, self.out_ann, [2, addresses[self.dac_val]])
+        self.put(self.ss, sm, self.out_ann, [1, commands.get(cmd_val, reserved)])
+        self.put(sm, self.es, self.out_ann, [2, addresses.get(self.dac_val, reserved)])
 
     def handle_data(self, data):
         self.data = (self.data << 8) & 0xFF00
@@ -145,7 +155,7 @@ class Decoder(srd.Decoder):
         if self.dac_val == 0x0F: # All DACs (A and B).
             self.put(self.ss, self.es, self.out_ann, [3 + 0, ann])
             self.put(self.ss, self.es, self.out_ann, [3 + 1, ann])
-        else:
+        elif self.dac_val in addresses:
             self.put(self.ss, self.es, self.out_ann, [3 + self.dac_val, ann])
 
     def decode(self, ss, es, data):
@@ -163,9 +173,9 @@ class Decoder(srd.Decoder):
             if cmd != 'ADDRESS WRITE':
                 return
             self.ss = ss
-            self.handle_slave_addr(databyte)
+            ok = self.handle_slave_addr(databyte)
             self.ss = -1
-            self.state = 'GET CMD ADDR'
+            self.state = 'GET CMD ADDR' if ok else 'IDLE'
         elif self.state == 'GET CMD ADDR':
             if cmd != 'DATA WRITE':
                 return

@@ -3,6 +3,9 @@
 ##
 ## Copyright (C) 2014 Sławek Piotrowski <sentinel@atteo.org>
 ##
+## Modified on 2026-11-23 for MHO900 Logic Analyzer: the frequency and
+## synchron pattern commands do not crash the decoder.
+##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
 ## the Free Software Foundation; either version 2 of the License, or
@@ -158,7 +161,7 @@ class Decoder(srd.Decoder):
 
     def handle_frequency_setting_cmd(self, cmd, ret):
         self.putx(0, 4, ['Frequency setting', 'Frequency'])
-        f = ((cmd[1] & 0xF) << 8) + cmd[2]
+        f = ((cmd[0] & 0xF) << 8) + cmd[1]
         self.putx(0, 12, ['F = %3.4f' % f])
         self.row_pos[2] -= 4
         if self.last_freq != f:
@@ -249,9 +252,10 @@ class Decoder(srd.Decoder):
     def handle_synchron_pattern_cmd(self, cmd, ret):
         self.putx(0, 8, ['Synchron pattern command'])
         if self.last_fifo_and_reset & 0x08:
-            self.putx(0, 8, ['Pattern: 0x2D%02X' % pattern])
+            # One byte.
+            self.putx(0, 8, ['Pattern: 0x%02X' % cmd[1]])
         else:
-            self.putx(0, 8, ['Pattern: %02X' % pattern])
+            self.putx(0, 8, ['Pattern: 0x2D%02X' % cmd[1]])
 
     def handle_fifo_read_cmd(self, cmd, ret):
         self.putx(0, 8, ['FIFO read command', 'FIFO read'])
