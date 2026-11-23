@@ -2093,6 +2093,9 @@ class ChannelScope:
     def channel_enabled(self, channel):
         return channel in self.on
 
+    def fetch_mixes_channels(self, channels):
+        return False
+
     def fetch(self, channel, progress=None, sample_format="BYTE"):
         assert channel in self.on, "the app must not read a channel that is off"
         return square_wave(channel, 1.0)
@@ -2109,6 +2112,34 @@ def test_fetch_refuses_a_channel_the_scope_will_not_switch_to():
     with pytest.raises(ScopeError, match="CH4"):
         scope.fetch(4)
     assert sent == [":WAVeform:SOURce CHANnel4"]
+
+
+@pytest.mark.parametrize("on, replies, mixed", [
+    ({2, 3}, {":TRIGger:MODE?": "EDGE", ":TRIGger:EDGE:SOURce?": "CHAN1"}, True),
+    ({2, 3}, {":TRIGger:MODE?": "EDGE", ":TRIGger:EDGE:SOURce?": "CHAN2"}, False),
+    ({2, 3}, {":TRIGger:MODE?": "EDGE", ":TRIGger:EDGE:SOURce?": "D1"}, False),
+    ({1, 2}, {":TRIGger:MODE?": "EDGE", ":TRIGger:EDGE:SOURce?": "CHAN3"}, False),
+    ({1, 3}, {":TRIGger:MODE?": "DEL", ":TRIGger:DELay:SA?": "CHAN1", ":TRIGger:DELay:SB?": "CHAN2"}, True),
+    ({2, 3}, {":TRIGger:MODE?": "PATT", ":TRIGger:PATTern:PATTern?": "R" + ",X" * 23}, True),
+    ({2, 3}, {":TRIGger:MODE?": "PATT", ":TRIGger:PATTern:PATTern?": "X,F" + ",X" * 22}, False),
+    ({2, 3}, {":TRIGger:MODE?": "DUR"}, True),
+    ({1, 2, 3, 4}, {":TRIGger:MODE?": "DUR"}, False),
+])
+def test_a_trigger_on_a_channel_that_is_off_is_known_to_mix_the_channels_read(on, replies, mixed):
+    scope = Scope("nowhere")
+    scope.query = {**{f":CHANnel{number}:DISPlay?": str(int(number in on)) for number in range(1, 5)}, **replies}.__getitem__
+    assert scope.fetch_mixes_channels([1, 2, 3, 4]) is mixed
+    assert scope.fetch_mixes_channels([digital_channel(0)]) is False
+
+
+def test_channels_that_would_be_mixed_are_read_from_the_file(window):
+    window.scope = ChannelScope({2})
+    window.scope.fetch_mixes_channels = lambda channels: True
+    window.scope.save_memory = lambda progress=None: bin_file(
+        bin_record(1, b"CH2", 8, np.ones(8, "<f4").tobytes()), bin_record(1, b"CH4", 8, np.zeros(8, "<f4").tobytes()))
+    waves, states = window._read_job([1, 2], lambda _text: None, "BYTE")
+    window.scope = None
+    assert list(waves) == [2] and waves[2].volts.min() == 1 and states["absent"] == [1]
 
 
 def test_reading_memory_leaves_out_channels_that_are_off_and_tells(window):
@@ -2448,6 +2479,9 @@ class CaptureScope(PlanScope):
 
     def channel_enabled(self, channel):
         return True
+
+    def fetch_mixes_channels(self, channels):
+        return False
 
     def channel_state(self, channel):
         return {"scale": 1.0, "offset": 0.0, "probe": 1.0, "coupling": "DC"}

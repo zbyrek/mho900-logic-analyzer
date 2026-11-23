@@ -63,6 +63,9 @@ wartościami, więc przy automatycznym progu sygnał poniżej 0,2 działki liczy
 3,3 V przy 20 V/dz, wymaga ręcznego progu w ustawieniach dekodera. Plik BIN otwarty z dysku nie ma skali, więc tam obowiązuje
 tylko stała granica 20 mV.
 
+Automatyczny próg znajduje impulsy, które zajmują znikomą część rekordu, o ile impuls utrzymuje swój poziom przez 5 próbek.
+Przesłuch na linii o stałym poziomie może nadal dawać fałszywe zbocza, gdy przekracza tę granicę, i wymaga ręcznego progu.
+
 ## Prędkość odczytu pamięci
 
 Domyślny format to BYTE w jednym bloku, najszybsza droga wyjścia danych z tego przyrządu.
@@ -79,6 +82,9 @@ Czasy zmierzone dla 10 M punktów:
 100 M punktów w BYTE trwa około 55 s. BYTE to górny bajt próbki WORD. WORD (na liście **Format odczytu**)
 przydaje się, gdy sygnał zajmuje mały ułamek zakresu. Limitem jest ścieżka SCPI przyrządu, około 1,8 MB/s:
 FTP na tym samym łączu daje 11,8 MB/s, a większy bufor gniazda nic nie zmienia.
+
+Gdy wyzwalanie słucha wyłączonego kanału analogowego, oscyloskop myli kanały czytane przez SCPI (zmierzone na firmware 00.01.00),
+a plik jest poprawny. Program czyta wtedy plik, niezależnie od **Formatu odczytu**.
 
 ## Okno programu
 

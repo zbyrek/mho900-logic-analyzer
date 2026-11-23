@@ -67,6 +67,14 @@ SAVE_START_S = 0.3
 SAVE_POLL_S = 0.2
 SAVE_LIMIT_S = 900.0  # measured 14 s for 10 M points on two channels plus the digital ones
 FTP_BLOCK_BYTES = 1 << 20
+# What names the channels a trigger listens to, by the reply of :TRIGger:MODE? (Programming Guide 3.27).
+TRIGGER_SOURCES = {
+    "EDGE": ("EDGE:SOURce",), "PULS": ("PULSe:SOURce",), "SLOP": ("SLOPe:SOURce",), "VID": ("VIDeo:SOURce",),
+    "TIM": ("TIMeout:SOURce",), "RUNT": ("RUNT:SOURce",), "WIND": ("WINDows:SOURce",), "DEL": ("DELay:SA", "DELay:SB"),
+    "SET": ("SHOLd:CSRC", "SHOLd:DSRC"), "NEDG": ("NEDGe:SOURce",), "RS232": ("RS232:SOURce",), "IIC": ("IIC:SCL", "IIC:SDA"),
+    "SPI": ("SPI:SCL", "SPI:SDA", "SPI:CS"), "CAN": ("CAN:SOURce",), "LIN": ("LIN:SOURce",),
+    "IIS": ("IIS:SOURce:CLOCk", "IIS:SOURce:WSELect", "IIS:SOURce:DATA"), "FLEX": ("FLEXray:SOURce",), "M1553": ("M1553:SOURce",),
+}
 # Nothing connected, DC, 10 mV/div to 5 V/div: the swing that auto_thresholds measures reached 0.11
 # div (BYTE and WORD), which in volts grows with the scale. Twice that is noise and not a signal.
 NOISE_DIVISIONS = 0.2
@@ -344,6 +352,28 @@ class Scope:
 
     def channel_enabled(self, channel: int) -> bool:
         return self.query(f":CHANnel{channel}:DISPlay?") == "1"
+
+    def trigger_channels(self) -> set[int]:
+        """The analog channels the trigger listens to, or all of them for a trigger that does not name its channels."""
+        mode = self.query(":TRIGger:MODE?")
+        if mode == "PATT":
+            states = self.query(":TRIGger:PATTern:PATTern?").split(",")[:ANALOG_CHANNELS]
+            return {number for number, state in enumerate(states, 1) if state != "X"}
+        if mode not in TRIGGER_SOURCES:
+            return set(range(1, ANALOG_CHANNELS + 1))
+        sources = [self.query(f":TRIGger:{command}?") for command in TRIGGER_SOURCES[mode]]
+        return {int(source.removeprefix("CHAN")) for source in sources if source.startswith("CHAN")}
+
+    def fetch_mixes_channels(self, channels) -> bool:
+        """Whether :WAVeform:DATA? would give another channel's samples for one of these channels. With CH2 and CH3 on
+        and a trigger on CH1, which is off, it gave CH1's samples as CH2 and CH2's as CH3, while the saved file was
+        right (measured, firmware 00.01.00, on Edge, Pulse, Pattern, Timeout, Window, Delay, Nth edge and RS232
+        triggers). Channels below the one that is off are not affected."""
+        wanted = [channel for channel in channels if not is_digital(channel) and self.channel_enabled(channel)]
+        if not wanted:
+            return False
+        below = {channel for channel in self.trigger_channels() if channel < max(wanted)}
+        return any(not self.channel_enabled(channel) for channel in below)
 
     def set_channel(self, channel: int, enabled: bool = True) -> None:
         self.write(f":CHANnel{channel}:DISPlay {'ON' if enabled else 'OFF'}")
